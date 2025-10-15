@@ -4,7 +4,7 @@ function Navbar() {
   return (
     <nav className="bg-white shadow-md sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-        <div className="text-xl font-bold text-gray-900">UWB Radar System</div>
+        <div className="text-3xl md:text-3xl font-extrabold text-gray-900">Radarix</div>
         <div className="space-x-6">
           <Link to="/" className="text-gray-700 hover:text-gray-900 font-semibold">Home</Link>
           <Link to="/about" className="text-gray-700 hover:text-gray-900 font-semibold">About</Link>
