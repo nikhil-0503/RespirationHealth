@@ -7,7 +7,7 @@ import Statistics from "./pages/Statistics";
 
 function GPPApp() {
   return (
-    <div>
+    <div className="font-sans bg-gray-50 min-h-screen">
       <Navbar />
       <Routes>
         <Route path="/" element={<Home />} />
