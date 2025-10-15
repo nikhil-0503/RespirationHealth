@@ -1,9 +1,8 @@
 function About() {
   return (
-    <div className="w-full min-h-screen bg-gray-50 px-6 md:px-12 lg:px-20 py-12 flex flex-col">
-      <h1 className="text-4xl md:text-5xl text-center font-bold mb-12 text-gray-900">
-        About the System
-      </h1>
+    <div className="w-screen min-h-screen bg-black text-gray-200 px-6 md:px-12 lg:px-20 py-12">
+      <h1 className="text-4xl md:text-5xl font-bold mb-12">About Radarix</h1>
+
 
       <main className="w-full flex-1 space-y-8">
 
