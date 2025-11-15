@@ -34,7 +34,14 @@ function computeStats(values) {
   const min = Math.min(...values);
   const max = Math.max(...values);
   const std = Math.sqrt(values.map(v => Math.pow(v - mean, 2)).reduce((a, b) => a + b, 0) / values.length);
-  return { mean: mean.toFixed(2), median: median.toFixed(2), min: min.toFixed(2), max: max.toFixed(2), std: std.toFixed(2) };
+
+  return {
+    mean: mean.toFixed(2),
+    median: median.toFixed(2),
+    min: min.toFixed(2),
+    max: max.toFixed(2),
+    std: std.toFixed(2)
+  };
 }
 
 export default function Statistics() {
@@ -63,11 +70,13 @@ export default function Statistics() {
     categories.forEach(cat => {
       const items = dataset.filter(d => d.category === cat);
       statsObj[cat] = {};
+
       numericFields.forEach(field => {
         const values = items.map(d => parseFloat(d[field]));
         statsObj[cat][field] = computeStats(values);
       });
     });
+
     setStats(statsObj);
 
     setBarData({
@@ -110,6 +119,7 @@ export default function Statistics() {
       <h2 style={{ marginBottom: "15px", textAlign: "center", color: "white", fontSize: "32px", fontWeight: "bold" }}>
         {category} Statistics
       </h2>
+
       <div style={{ display: "flex", flexWrap: "wrap", gap: "20px", justifyContent: "center" }}>
         {Object.keys(stats[category]).map(field => (
           <div
@@ -127,6 +137,7 @@ export default function Statistics() {
             <h3 style={{ textTransform: "capitalize", marginBottom: "10px", fontSize: "22px", fontWeight: "bold" }}>
               {field.replace("_", " ")}
             </h3>
+
             <p><strong>Mean:</strong> {stats[category][field].mean}</p>
             <p><strong>Median:</strong> {stats[category][field].median}</p>
             <p><strong>Min:</strong> {stats[category][field].min}</p>
@@ -138,7 +149,27 @@ export default function Statistics() {
     </div>
   );
 
-  if (!stats) return <div style={{ color: "white", textAlign: "center" }}>Loading...</div>;
+  // FULL PAGE LOADING SCREEN (NO FLICKER)
+  if (!stats) {
+    return (
+      <div
+        style={{
+          width: "100vw",
+          height: "100vh",
+          backgroundColor: "#121212",
+          color: "white",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: "32px",
+          fontWeight: "bold",
+          overflowX: "hidden"
+        }}
+      >
+        Loading...
+      </div>
+    );
+  }
 
   const chartOptions = {
     responsive: true,
@@ -147,8 +178,8 @@ export default function Statistics() {
       title: { display: false }
     },
     scales: {
-      x: { ticks: { color: "white", font: { size: 14, weight: "bold" } }, grid: { color: "#444" } },
-      y: { ticks: { color: "white", font: { size: 14, weight: "bold" } }, grid: { color: "#444" } }
+      x: { ticks: { color: "white" }, grid: { color: "#444" } },
+      y: { ticks: { color: "white" }, grid: { color: "#444" } }
     }
   };
 
@@ -157,27 +188,45 @@ export default function Statistics() {
     borderRadius: "10px",
     padding: "20px",
     margin: "20px auto",
-    maxWidth: "600px",
+    maxWidth: "700px",
+    width: "90%",
     boxShadow: "2px 2px 10px rgba(0,0,0,0.5)"
   };
 
   return (
-    <div style={{ width: "100vw", minHeight: "100vh", textAlign: "center", backgroundColor: "#121212", padding: "20px" }}>
-      <h1 style={{ color: "white", fontSize: "48px", marginBottom: "40px", fontWeight: "bold" }}>Respiration Health Data Analysis</h1>
+    <div
+      style={{
+        width: "100vw",
+        minHeight: "100vh",
+        textAlign: "center",
+        backgroundColor: "#121212",
+        padding: "20px",
+        overflowX: "hidden",
+      }}
+    >
+      <h1 style={{ color: "white", fontSize: "48px", marginBottom: "40px", fontWeight: "bold" }}>
+        Respiration Health Data Analysis
+      </h1>
 
       <div style={chartBoxStyle}>
-        <h2 style={{ color: "white", fontSize: "28px", marginBottom: "20px", fontWeight: "bold" }}>Bar Chart: Mean Respiration Rate</h2>
+        <h2 style={{ color: "white", fontSize: "28px", marginBottom: "20px", fontWeight: "bold" }}>
+          Bar Chart: Mean Respiration Rate
+        </h2>
         <Bar data={barData} options={chartOptions} />
       </div>
 
       <div style={chartBoxStyle}>
-        <h2 style={{ color: "white", fontSize: "28px", marginBottom: "20px", fontWeight: "bold" }}>Line Chart: Mean Values of Fields</h2>
+        <h2 style={{ color: "white", fontSize: "28px", marginBottom: "20px", fontWeight: "bold" }}>
+          Line Chart: Mean Values of Fields
+        </h2>
         <Line data={lineData} options={chartOptions} />
       </div>
 
       <div style={chartBoxStyle}>
-        <h2 style={{ color: "white", fontSize: "28px", marginBottom: "20px", fontWeight: "bold" }}>Pie Chart: Mean Signal Strength</h2>
-        <Pie data={pieData} options={{ plugins: { legend: { labels: { color: "white", font: { size: 16, weight: "bold" } } } } }} />
+        <h2 style={{ color: "white", fontSize: "28px", marginBottom: "20px", fontWeight: "bold" }}>
+          Pie Chart: Mean Signal Strength
+        </h2>
+        <Pie data={pieData} />
       </div>
 
       {Object.keys(stats).map(cat => renderSummaryBoxes(cat))}
