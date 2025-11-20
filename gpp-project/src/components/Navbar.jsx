@@ -1,6 +1,22 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
+import { useEffect, useState } from "react";
 
 function Navbar() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [loggedIn, setLoggedIn] = useState(false);
+
+  // Re-check login state on EVERY page change
+  useEffect(() => {
+    setLoggedIn(localStorage.getItem("logged_in") === "true");
+  }, [location.pathname]);
+
+  const handleLogout = () => {
+    localStorage.removeItem("logged_in");
+    setLoggedIn(false);
+    navigate("/");
+  };
+
   return (
     <nav className="bg-black/90 shadow-md sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
@@ -10,7 +26,23 @@ function Navbar() {
           <Link to="/about" className="text-gray-300 hover:text-white font-semibold">About</Link>
           <Link to="/run-sensor" className="text-gray-300 hover:text-white font-semibold">Run Sensor</Link>
           <Link to="/statistics" className="text-gray-300 hover:text-white font-semibold">Statistics</Link>
-          <Link to="/" className="text-gray-300 hover:text-white font-semibold">Login</Link>
+
+          {/* LOGIN / LOGOUT */}
+          {!loggedIn ? (
+            <Link
+              to="/"
+              className="text-gray-300 hover:text-white font-semibold"
+            >
+              Login
+            </Link>
+          ) : (
+            <span
+              onClick={handleLogout}
+              className="cursor-pointer text-gray-300 hover:text-white font-semibold"
+            >
+              Logout
+            </span>
+          )}
         </div>
       </div>
     </nav>

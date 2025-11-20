@@ -19,7 +19,7 @@ DATA_BAUD = 921600
 CFG_FILE = r"C:\ti\mmwave_industrial_toolbox_4_12_1\labs\Vital_Signs\68xx_vital_signs\gui\profiles\xwr68xx_profile_VitalSigns_20fps_Front.cfg"
 
 DURATION = 10  # seconds
-CSV_DIR = r"C:\Users\Nikhil\Downloads\SSN\College Files\Grand Project\RespirationHealth"
+CSV_DIR = r"C:\Users\Nikhil\Downloads\SSN\College Files\Grand Project\RespirationHealth\gpp-project\backend"
 
 # Single CSV file for all data
 MASTER_CSV = f"{CSV_DIR}\\vital_signs_data.csv"
@@ -43,17 +43,18 @@ if not file_exists:
         "Timestamp", "SessionTime", "HeartRate_BPM", "RespirationRate_BPM", "Range_m",
         "HeartWaveform", "BreathWaveform", "HeartRate_FFT", "BreathRate_FFT"
     ])
-    print(f"✓ Created new file: {MASTER_CSV}")
+    print(f"[OK] Created new file: {MASTER_CSV}")
 else:
-    print(f"✓ Appending to existing file: {MASTER_CSV}")
+    print(f"[OK] Appending to existing file: {MASTER_CSV}")
 
 print("="*60)
 print("TI mmWave Radar Vital Signs Data Logger")
 print("="*60)
 print("\nChange Detection Enabled:")
-print(f"  - Heart Rate threshold: ±{HR_CHANGE_THRESHOLD} bpm")
-print(f"  - Respiration Rate threshold: ±{RR_CHANGE_THRESHOLD} bpm")
-print(f"  - Range threshold: ±{RANGE_CHANGE_THRESHOLD*100:.0f} cm")
+print(f"  - Heart Rate threshold: +/- {HR_CHANGE_THRESHOLD} bpm")
+print(f"  - Respiration Rate threshold: +/- {RR_CHANGE_THRESHOLD} bpm")
+print(f"  - Range threshold: +/- {RANGE_CHANGE_THRESHOLD*100:.0f} cm")
+
 print("="*60)
 
 # -----------------------------
@@ -249,7 +250,7 @@ try:
                             
                             if method_variances:
                                 best_range_method = min(method_variances, key=method_variances.get)
-                                print(f"\n✓ Selected range method: {best_range_method}")
+                                print(f"\nData appended to: {MASTER_CSV}")
                                 print(f"  Variance: {method_variances[best_range_method]:.6f}\n")
                         
                         # Use best method if determined
@@ -343,7 +344,7 @@ try:
                                 last_saved_range = smoothed_range
                                 
                                 # Print saved reading
-                                print(f"[{ts:5.1f}s] ✓ SAVED | HR: {heart_rate:5.1f} | RR: {breath_rate:4.1f} | Range: {smoothed_range:.3f}m ({smoothed_range*100:.0f}cm)")
+                                print(f"[{ts:5.1f}s] [SAVED] HR: {heart_rate:5.1f} | RR: {breath_rate:4.1f} | Range: {smoothed_range:.3f}m")
                             else:
                                 data_skipped += 1
                                 # Optionally print skipped readings (uncomment if needed)

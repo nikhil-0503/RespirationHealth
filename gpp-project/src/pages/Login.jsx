@@ -10,6 +10,7 @@ export default function Login() {
     e.preventDefault();
 
     if (email === "admin@gpp.com" && password === "123456") {
+      localStorage.setItem("logged_in", "true");  // IMPORTANT
       navigate("/home");
     } else {
       alert("Invalid login details");
