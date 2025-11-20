@@ -45,6 +45,11 @@ function computeStats(values) {
 }
 
 export default function Statistics() {
+
+  useEffect(() => {
+    document.title = "Radarix | Statistics";
+  }, []);
+
   const [stats, setStats] = useState(null);
   const [barData, setBarData] = useState(null);
   const [lineData, setLineData] = useState(null);
@@ -149,7 +154,6 @@ export default function Statistics() {
     </div>
   );
 
-  // FULL PAGE LOADING SCREEN (NO FLICKER)
   if (!stats) {
     return (
       <div
@@ -201,7 +205,7 @@ export default function Statistics() {
         textAlign: "center",
         backgroundColor: "#121212",
         padding: "20px",
-        overflowX: "hidden",
+        overflowX: "hidden"
       }}
     >
       <h1 style={{ color: "white", fontSize: "48px", marginBottom: "40px", fontWeight: "bold" }}>

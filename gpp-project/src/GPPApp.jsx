@@ -6,6 +6,8 @@ import RunSensor from "./pages/RunSensor";
 import Statistics from "./pages/Statistics";
 import Login from "./pages/Login";
 
+import ProtectedRoute from "./components/ProtectedRoute";
+
 function GPPApp() {
   const location = useLocation();
   const hideLayout = location.pathname === "/login";
@@ -15,11 +17,32 @@ function GPPApp() {
       {!hideLayout && <Navbar />}
 
       <Routes>
-        <Route path="/" element={<Login />} />
+        {/* Public pages */}
+        <Route path="/login" element={<Login />} />
+        <Route path="/home" element={<Home />} />
         <Route path="/about" element={<About />} />
-        <Route path="/run-sensor" element={<RunSensor />} />
-        <Route path="/statistics" element={<Statistics />} />
-        <Route path="/home" element={<Home  />} />
+
+        {/* Protected pages (only these two!) */}
+        <Route
+          path="/run-sensor"
+          element={
+            <ProtectedRoute>
+              <RunSensor />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/statistics"
+          element={
+            <ProtectedRoute>
+              <Statistics />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Redirect "/" to login */}
+        <Route path="/" element={<Login />} />
       </Routes>
     </div>
   );

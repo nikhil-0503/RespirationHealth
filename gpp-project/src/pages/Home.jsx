@@ -1,4 +1,11 @@
+import { useEffect } from "react";
+
 function Home() {
+
+  useEffect(() => {
+    document.title = "Radarix | Home";  
+  }, []);
+
   return (
     <div className="flex flex-col items-center justify-start w-screen min-h-screen bg-black px-6 md:px-12 lg:px-20 pt-32 text-gray-200">
       <h1 className="text-5xl md:text-6xl font-extrabold mb-4">Radarix</h1>
