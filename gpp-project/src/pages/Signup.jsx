@@ -1,57 +1,66 @@
+// src/pages/Signup.jsx
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { signInWithEmailAndPassword } from "firebase/auth";
+import { createUserWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../firebase";
 
-export default function Login() {
+export default function Signup() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    document.title = "Radarix";
+    document.title = "Radarix | Create Account";
   }, []);
 
-  const handleSubmit = async (e) => {
+  const handleSignup = async (e) => {
     e.preventDefault();
     setErrorMsg("");
 
+    if (!email || !password) {
+      setErrorMsg("Please fill out all fields.");
+      return;
+    }
+    if (password.length < 6) {
+      setErrorMsg("Password must be at least 6 characters.");
+      return;
+    }
+    if (password !== confirm) {
+      setErrorMsg("Passwords do not match.");
+      return;
+    }
+
+    setLoading(true);
+
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-
-      // 👉 THIS IS NEW — Save logged-in user email
-      localStorage.setItem("loggedUser", email);
-
-      // Existing login flag
-      localStorage.setItem("logged_in", "true");
-
-      navigate("/home");
+      await createUserWithEmailAndPassword(auth, email, password);
+      setLoading(false);
+      navigate("/login");
     } catch (err) {
+      setLoading(false);
       console.error(err);
-
-      if (err.code === "auth/user-not-found") {
-        setErrorMsg("No account found with this email.");
-      } else if (err.code === "auth/wrong-password") {
-        setErrorMsg("Incorrect password.");
-      } else {
-        setErrorMsg("Login failed. Try again.");
-      }
+      setErrorMsg("Could not create account.");
     }
   };
 
   return (
     <div className="w-screen min-h-screen bg-black text-gray-200 overflow-hidden">
-      <div className="pt-24 flex justify-center">
-        <div className="bg-[#0f0f0f] p-10 rounded-2xl shadow-xl shadow-black/60 w-[90%] max-w-md border border-gray-800">
-          
-          <h2 className="text-3xl font-bold mb-6 text-center">Login</h2>
+
+      <div className="pt-24 flex justify-center px-4">
+
+        <div className="bg-[#0f0f0f] p-8 rounded-2xl shadow-xl shadow-black/60 w-full max-w-md border border-gray-800">
+
+          <h2 className="text-3xl font-bold mb-6 text-center">Create Account</h2>
 
           {errorMsg && (
             <p className="text-red-400 text-center mb-4">{errorMsg}</p>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSignup} className="space-y-4">
+
             <div>
               <label className="block mb-1 text-sm font-medium">Email</label>
               <input
@@ -76,22 +85,36 @@ export default function Login() {
               />
             </div>
 
+            <div>
+              <label className="block mb-1 text-sm font-medium">Confirm Password</label>
+              <input
+                type="password"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                required
+                className="w-full px-4 py-2 rounded-lg bg-[#111111] border border-gray-700 text-gray-200
+                           focus:outline-none focus:ring-0 focus:border-gray-500"
+              />
+            </div>
+
             <button
               type="submit"
               className="w-full py-2 rounded-lg font-semibold bg-[#2a2a2a] border border-gray-700 text-gray-200
                          hover:bg-[#333333] hover:border-gray-500 hover:text-white transition"
+              disabled={loading}
             >
-              Login
+              {loading ? "Creating account..." : "Sign Up"}
             </button>
+
           </form>
 
           <p className="mt-4 text-center text-sm text-gray-400">
-            Don’t have an account?{" "}
+            Already have an account?{" "}
             <button
-              onClick={() => navigate("/signup")}
+              onClick={() => navigate("/login")}
               className="text-gray-200 hover:text-white"
             >
-              Create one
+              Log in
             </button>
           </p>
 
