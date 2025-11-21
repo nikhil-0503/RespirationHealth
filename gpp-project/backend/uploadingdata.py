@@ -12,7 +12,7 @@ db = firestore.client()
 # ----------------------------
 # 2. CSV FILE PATH
 # ----------------------------
-CSV_FILE = "vital_signs_data.csv"   # <-- change if needed
+CSV_FILE = "vital_signs_data2.csv"   # <-- change if needed
 
 # ----------------------------
 # 3. Upload Function
