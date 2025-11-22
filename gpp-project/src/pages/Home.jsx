@@ -1,135 +1,107 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 
 function Home() {
+  const navigate = useNavigate();
+  const heroRef = useRef(null);
+
   useEffect(() => {
     document.title = "Radarix | Home";
+
+    // Parallax effect
+    const handleMouseMove = (e) => {
+      const x = (e.clientX / window.innerWidth - 0.5) * 20;
+      const y = (e.clientY / window.innerHeight - 0.5) * 20;
+      if (heroRef.current) {
+        heroRef.current.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+      }
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    return () => window.removeEventListener("mousemove", handleMouseMove);
   }, []);
 
   return (
-    <div className="flex flex-col items-start justify-start w-screen min-h-screen bg-black px-6 md:px-12 lg:px-20 pt-32 text-gray-200">
+    <div className="relative w-screen min-h-screen bg-black text-gray-200 px-6 md:px-12 lg:px-20 pt-32 overflow-hidden">
 
-      {/* ---------- Centered Main Header Section ---------- */}
-      <div className="flex flex-col items-center text-center w-full">
-        <h1 className="text-5xl md:text-6xl font-extrabold mb-4">Radarix</h1>
-
-        <h2 className="text-2xl md:text-3xl font-semibold mb-6">
-          UWB Radar Based System for Physiological Signals
-        </h2>
-
-        <p className="text-lg md:text-xl max-w-3xl">
-          Radarix provides accurate, real-time, and non-contact monitoring of vital
-          physiological signals using advanced UWB radar and AI technology.
-        </p>
+      {/* -------- Animated Radar Waves -------- */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-30">
+        <div className="absolute h-64 w-64 rounded-full border border-gray-700 animate-ping"></div>
+        <div className="absolute h-96 w-96 rounded-full border border-gray-800 animate-ping delay-300"></div>
+        <div className="absolute h-40 w-40 rounded-full border border-gray-600"></div>
       </div>
 
-      {/* ---------- Left-Aligned Content Below ---------- */}
-      <h1 className="text-4xl md:text-5xl font-bold mt-16 mb-12">About Radarix</h1>
+      {/* -------- HERO SECTION -------- */}
+      <section
+        ref={heroRef}
+        className="relative flex flex-col items-center text-center w-full mb-20 transition-transform duration-300"
+      >
 
-      <main className="w-full flex-1 space-y-8">
+        {/* Glow Behind Title */}
+        <div className="absolute top-1/2 -translate-y-1/2 h-40 w-40 md:h-56 md:w-56 bg-[rgba(255,255,255,0.06)]
+                        blur-3xl rounded-full"></div>
 
-        <section>
-          <h2 className="text-2xl font-semibold mb-2">Overview</h2>
-          <p>
-            Physiological signal monitoring is critical for health tracking. Traditional contact-based methods
-            (ECG, pulse sensors) are uncomfortable and limit mobility. This system leverages UWB radar and AI
-            to provide non-contact, precise, and real-time monitoring of heart rate, respiration, and movement
-            patterns.
-          </p>
-        </section>
+        <h1 className="relative text-6xl md:text-7xl font-extrabold tracking-tight mb-6 drop-shadow-[0_0_35px_rgba(255,255,255,0.15)]">
+          Radarix
+        </h1>
 
-        <section>
-          <h2 className="text-2xl font-semibold mb-2">System Workflow</h2>
-          <ol className="list-decimal pl-6 space-y-2">
-            <li><strong>Signal Acquisition:</strong> UWB radar captures physiological signals non-intrusively.</li>
-            <li><strong>Signal Processing:</strong> Filters noise and extracts vital parameters with advanced algorithms.</li>
-            <li><strong>Health Monitoring:</strong> Detects abnormalities in heartbeat and breathing.</li>
-            <li><strong>User Interface:</strong> Displays real-time readings and alerts on a dashboard.</li>
-            <li><strong>System Robustness:</strong> Works reliably across different environments and users.</li>
-          </ol>
-        </section>
+        <h2 className="text-2xl md:text-3xl text-gray-300 max-w-3xl leading-relaxed mb-8">
+          The Future of Non-Contact Health Monitoring
+        </h2>
 
-        <section>
-          <h2 className="text-2xl font-semibold mb-2">Current Methods and Challenges</h2>
-          <ul className="list-disc pl-6 space-y-1">
-            <li>Contact sensors are restrictive and uncomfortable.</li>
-            <li>Wearables are prone to motion artifacts and require user compliance.</li>
-            <li>Continuous monitoring is hard due to noise and environmental interference.</li>
-          </ul>
-        </section>
+        <p className="text-lg md:text-xl text-gray-400 max-w-2xl">
+          Experience precision tracking of heart rate and respiration using next-generation UWB radar — 
+          no wearables, no wires, pure clarity.
+        </p>
+      </section>
 
-        <section>
-          <h2 className="text-2xl font-semibold mb-2">Advantages of UWB Radar System</h2>
-          <ul className="list-disc pl-6 space-y-1">
-            <li>Non-contact and hygienic monitoring.</li>
-            <li>Detects micro-movements from heartbeat and breathing.</li>
-            <li>Continuous monitoring in homes, hospitals, and fitness centers.</li>
-            <li>AI-powered analysis ensures accuracy and early anomaly detection.</li>
-          </ul>
-        </section>
+      {/* -------- FEATURE GRID -------- */}
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-10 w-full mb-28">
 
-        <section>
-          <h2 className="text-2xl font-semibold mb-2">Technical Design</h2>
-          <ol className="list-decimal pl-6 space-y-2">
-            <li><strong>Input:</strong> Raw UWB radar signals.</li>
-            <li><strong>Preprocessing:</strong> Noise filtering, clutter removal, normalization.</li>
-            <li><strong>Feature Extraction:</strong> Doppler and time-frequency analysis for vital signs.</li>
-            <li><strong>Model Development:</strong> CNN, RNN, Transformer AI models.</li>
-            <li><strong>Anomaly Detection:</strong> Flags abnormal heart or breathing patterns.</li>
-            <li><strong>Output:</strong> Visualized metrics and alerts on the dashboard.</li>
-          </ol>
-        </section>
+        <div className="bg-[#0f0f0f] p-8 rounded-2xl border border-gray-800 shadow-xl shadow-black/40 
+                        hover:shadow-gray-700/40 hover:-translate-y-1 transition-all">
+          <div className="text-4xl mb-4">📡</div>
+          <h3 className="text-xl font-semibold mb-2">UWB Radar Precision</h3>
+          <p className="text-gray-400">Capture micro-movements caused by heartbeat and breathing — fully non-contact.</p>
+        </div>
 
-        <section>
-          <h2 className="text-2xl font-semibold mb-2">Validation and Deployment</h2>
-          <p>
-            System performance is measured using accuracy, sensitivity, specificity, and F1-score.
-            Edge devices handle real-time monitoring while cloud systems manage analytics, storage,
-            and model updates.
-          </p>
-        </section>
+        <div className="bg-[#0f0f0f] p-8 rounded-2xl border border-gray-800 shadow-xl shadow-black/40 
+                        hover:shadow-gray-700/40 hover:-translate-y-1 transition-all">
+          <div className="text-4xl mb-4">🎛️</div>
+          <h3 className="text-xl font-semibold mb-2">Signal Processing Engine</h3>
+          <p className="text-gray-400">Noise-filtered extraction of physiological signals using DSP techniques.</p>
+        </div>
 
-        <section>
-          <h2 className="text-2xl font-semibold mb-2">Expected Outcomes</h2>
-          <ul className="list-disc pl-6 space-y-1">
-            <li>Accurate non-contact measurement of heart rate and respiration.</li>
-            <li>Detection of physiological anomalies.</li>
-            <li>Real-time, user-friendly dashboard for health insights.</li>
-            <li>Scalable for multiple environments.</li>
-          </ul>
-        </section>
+        <div className="bg-[#0f0f0f] p-8 rounded-2xl border border-gray-800 shadow-xl shadow-black/40 
+                        hover:shadow-gray-700/40 hover:-translate-y-1 transition-all">
+          <div className="text-4xl mb-4">📈</div>
+          <h3 className="text-xl font-semibold mb-2">Real-Time Insights</h3>
+          <p className="text-gray-400">Monitor heart rate, respiration, and movement patterns with live visualization.</p>
+        </div>
 
-        <section>
-          <h2 className="text-2xl font-semibold mb-2">Benefits</h2>
-          <ul className="list-disc pl-6 space-y-1">
-            <li>Comfortable and hygienic.</li>
-            <li>Supports early health interventions.</li>
-            <li>Applicable in healthcare, elderly care, and fitness.</li>
-          </ul>
-        </section>
+      </section>
 
-        <section>
-          <h2 className="text-2xl font-semibold mb-2">Challenges</h2>
-          <ul className="list-disc pl-6 space-y-1">
-            <li>Environmental signal interference.</li>
-            <li>Variability with posture, clothing, and distance.</li>
-            <li>Hardware integration and cost considerations.</li>
-          </ul>
-        </section>
+      {/* -------- CTA SECTION -------- */}
+      <section className="flex flex-col items-center w-full mb-24">
+        <h2 className="text-3xl md:text-4xl font-semibold mb-4">
+          A New Standard in Health Technology
+        </h2>
 
-        <section>
-          <h2 className="text-2xl font-semibold mb-2">Future Scope</h2>
-          <ul className="list-disc pl-6 space-y-1">
-            <li>Multi-sensor fusion for improved accuracy.</li>
-            <li>Extension to stress and mental health analysis.</li>
-            <li>Integration with telemedicine and IoT healthcare platforms.</li>
-          </ul>
-          <p className="mt-2">
-            UWB radar with AI enables accurate, continuous, and non-contact physiological monitoring,
-            bridging comfort and precision for next-generation health solutions.
-          </p>
-        </section>
+        <p className="text-gray-400 text-lg max-w-2xl text-center mb-8">
+          Designed for homes, hospitals, and research labs — Radarix brings next-generation sensing to real-world environments.
+        </p>
 
-      </main>
+        <button
+          onClick={() => navigate("/about")}
+          className="px-8 py-3 rounded-lg border border-gray-700 text-gray-200 bg-[#1a1a1a]
+                     hover:bg-[#222] hover:border-gray-500 hover:text-white transition"
+        >
+          Learn More
+        </button>
+      </section>
+    <div className="w-full max-w-7xl mt-8 mb-12 text-center text-gray-400">
+        <small>Radarix, 2025</small>
+      </div>
     </div>
   );
 }

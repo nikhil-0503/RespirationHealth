@@ -173,6 +173,9 @@ function RunSensor() {
       </div>
 
       <br />
+      <div className="w-full max-w-7xl mt-8 mb-12 text-center text-gray-400">
+        <small>Radarix, 2025</small>
+      </div>
     </div>
   );
 }

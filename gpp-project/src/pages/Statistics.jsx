@@ -614,7 +614,7 @@ async function fetchAnomalies() {
     </p>
 
     <p className="mt-1 text-sm text-gray-300">
-      SQI Std: <span className="font-medium text-gray-100">
+      SQI Standard Deviation: <span className="font-medium text-gray-100">
         {overviewStats?.sqi_std ? overviewStats.sqi_std.toFixed(2) : "-"}
       </span>
     </p>
@@ -637,7 +637,7 @@ async function fetchAnomalies() {
     </p>
 
     <p className="mt-1 text-sm text-gray-300">
-      Std: <span className="font-medium text-gray-100">
+      Standard Deviation: <span className="font-medium text-gray-100">
         {overviewStats?.final_hr_std ? overviewStats.final_hr_std.toFixed(2) : "-"}
       </span>
     </p>
@@ -656,20 +656,6 @@ async function fetchAnomalies() {
   </div>
 
 </div>
-
-
-      {/* Download comparison file */}
-      <div className="w-full max-w-7xl mb-6">
-        <div className="flex items-center justify-between bg-[#0f0f0f] border border-gray-700 rounded-xl p-4">
-          <div>
-            <h4 className="text-md font-medium text-gray-200">Run-level CSV</h4>
-            <p className="text-sm text-gray-300">Download the run CSV served by Flask for offline analysis.</p>
-          </div>
-          <div>
-            <a href={`${EDA_BACKEND_BASE}/download/comparison`} className="px-4 py-2 bg-[#111827] border border-gray-600 text-gray-200 rounded-lg hover:bg-[#1a1a1a]">Download CSV</a>
-          </div>
-        </div>
-      </div>
 
       {/* Charts grid */}
       <div className="w-full max-w-7xl grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -840,7 +826,7 @@ async function fetchAnomalies() {
       <div className="w-full max-w-7xl mt-10">
         <h2 className="text-2xl font-semibold mb-4">Merged Correlation (Cleaned Samples + Final Statistics)</h2>
         <div className="bg-[#0b0b0b] border border-gray-700 rounded-xl p-4 shadow-md">
-          <p className="text-sm text-gray-400 mb-2">Correlation computed by merging cleaned sample-level data with run-level FinalStats by nearest Timestamp.</p>
+          <p className="text-sm text-gray-400 mb-2">Correlation computed by merging cleaned sample-level data with run-level Final Statistics by nearest Timestamp.</p>
           {renderCorrelationHeatmap(mergedCorr)}
         </div>
       </div>
@@ -864,15 +850,15 @@ async function fetchAnomalies() {
       </div>
       {/* Anomalies Summary */}
       <div className="w-full max-w-7xl mt-10">
-        <h2 className="text-2xl font-semibold mb-4">Detected Anomalies</h2>
+        <h2 className="text-2xl font-semibold mb-4">Detected Anomalies (From Final Statistics) </h2>
 
         <div className="bg-[#0f0f0f] border border-gray-700 rounded-xl p-6 shadow-lg">
           <p className="text-sm text-gray-300">
-            OK Runs: <span className="font-medium text-green-400">{anomalyStats?.ok ?? 0}</span>
+            Number of runs that are OK : <span className="font-medium text-green-400">{anomalyStats?.ok ?? 0}</span>
           </p>
 
           <p className="mt-2 text-sm text-gray-300">
-            Not OK Runs: <span className="font-medium text-red-400">{anomalyStats?.not_ok ?? 0}</span>
+            Number of runs that are Not OK : <span className="font-medium text-red-400">{anomalyStats?.not_ok ?? 0}</span>
           </p>
         </div>
       </div>

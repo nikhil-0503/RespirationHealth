@@ -1,132 +1,169 @@
-import firebase_admin
-from firebase_admin import credentials, firestore
 import pandas as pd
 import numpy as np
 import os
+import re
 
-# -----------------------------------------
-# 1. INIT FIREBASE
-# -----------------------------------------
-cred = credentials.Certificate(
-    r"C:\Users\Nikhil\Downloads\SSN\College Files\Grand Project\RespirationHealth\gpp-project\backend\serviceAccountKey.json"
+# -----------------------------------------------------
+# 1. PATHS
+# -----------------------------------------------------
+CLEAN_FILE = r"C:\Users\Nikhil\Downloads\SSN\College Files\Grand Project\RespirationHealth\gpp-project\data_analysis\cleaned_vital_signs.csv"
+OUTPUT_DIR = r"C:\Users\Nikhil\Downloads\SSN\College Files\Grand Project\RespirationHealth\gpp-project\data_analysis"
+FINAL_STATS_FILE = os.path.join(OUTPUT_DIR, "final_run_stats.csv")
+
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# -----------------------------------------------------
+# 2. LOAD CLEANED SAMPLE DATA
+# -----------------------------------------------------
+if not os.path.exists(CLEAN_FILE):
+    print("❌ cleaned_vital_signs.csv not found!")
+    exit()
+
+df = pd.read_csv(CLEAN_FILE)
+
+# -----------------------------------------------------
+# 3. CLEAN TIMESTAMP COLUMN
+# -----------------------------------------------------
+df["Timestamp"] = (
+    df["Timestamp"]
+    .astype(str)
+    .str.strip()
 )
-firebase_admin.initialize_app(cred)
 
-db = firestore.client()
+# Remove invalid timestamp values
+INVALID_TS = ["", "nan", "None", "NaT", "null", "[]"]
+df = df[~df["Timestamp"].isin(INVALID_TS)]
 
-# -----------------------------------------
-# 2. FETCH CLEANED DATA
-# -----------------------------------------
-docs = db.collection("CleanedVitalSignsData").stream()
+# Keep only valid dd-mm-yyyy timestamps
+df = df[df["Timestamp"].str.contains(r"\d{2}-\d{2}-\d{4}", regex=True, na=False)]
 
-rows = []
-for d in docs:
-    rows.append(d.to_dict())
+if df.empty:
+    print("❌ No valid timestamps in cleaned_vital_signs.csv")
+    exit()
 
-df = pd.DataFrame(rows)
+# Convert numeric columns
+for col in ["Heart_clean", "Resp_clean", "Range_clean"]:
+    df[col] = pd.to_numeric(df[col], errors="coerce")
 
-# -----------------------------------------
-# 3. FIX DATA TYPES
-# -----------------------------------------
-df["Heart_clean"] = pd.to_numeric(df["Heart_clean"], errors="coerce")
-df["Resp_clean"] = pd.to_numeric(df["Resp_clean"], errors="coerce")
-df["Range_clean"] = pd.to_numeric(df["Range_clean"], errors="coerce")
+# Remove rows where all vital signs are missing
+df = df.dropna(subset=["Heart_clean", "Resp_clean", "Range_clean"], how="all")
 
-# -----------------------------------------
-# 4. GROUP BY RUN (Timestamp)
-# -----------------------------------------
-run_stats = df.groupby("Timestamp").agg(
+# -----------------------------------------------------
+# 4. LOAD EXISTING FINAL_RUN_STATS TO DETECT NEW RUNS
+# -----------------------------------------------------
+if os.path.exists(FINAL_STATS_FILE):
+    prev = pd.read_csv(FINAL_STATS_FILE)
+    old_timestamps = set(prev["Timestamp"].astype(str))
+else:
+    prev = pd.DataFrame()
+    old_timestamps = set()
+
+# Filter only NEW timestamps
+new_df = df[~df["Timestamp"].isin(old_timestamps)].copy()
+
+if len(new_df) == 0:
+    print("✔ No new runs detected.")
+    exit()
+
+print(f"✔ New samples detected: {len(new_df)}")
+
+# -----------------------------------------------------
+# 5. REMOVE RUNS WITH < 5 SAMPLES (invalid runs)
+# -----------------------------------------------------
+new_df = new_df.groupby("Timestamp").filter(lambda g: len(g) >= 5)
+
+if len(new_df) == 0:
+    print("⚠ All new timestamps had <5 samples. No valid runs.")
+    exit()
+
+print(f"✔ Valid new samples after filtering short runs: {len(new_df)}")
+
+# -----------------------------------------------------
+# 6. GROUP INTO RUNS
+# -----------------------------------------------------
+run_stats = new_df.groupby("Timestamp").agg(
     Rows=("Heart_clean", "count"),
     Avg_HR_clean=("Heart_clean", "mean"),
     Avg_RR_clean=("Resp_clean", "mean"),
     Avg_Range=("Range_clean", "mean"),
-    Range_SD=("Range_clean", "std"),
+    Range_SD=("Range_clean", "std")
 ).reset_index()
 
-# ---------------------------------------------------
-# 5. EXTRA FEATURE EXTRACTION (per run)
-# ---------------------------------------------------
-
-# HR, RR variability + peak-to-peak amplitude
-extra_features = df.groupby("Timestamp").agg(
+# -----------------------------------------------------
+# 7. EXTRA FEATURES (Safe)
+# -----------------------------------------------------
+extra = new_df.groupby("Timestamp").agg(
     HR_SD=("Heart_clean", "std"),
     RR_SD=("Resp_clean", "std"),
     HR_P2P=("Heart_clean", lambda x: float(x.max() - x.min())),
-    RR_P2P=("Resp_clean", lambda x: float(x.max() - x.min())),
+    RR_P2P=("Resp_clean", lambda x: float(x.max() - x.min()))
 ).reset_index()
 
-# Range slope (movement trend)
-def compute_range_slope(values):
-    if len(values) < 2:
+def compute_range_slope(vals):
+    vals = vals.dropna()
+    if len(vals) < 2:
         return 0.0
-    t = np.arange(len(values))
-    slope = np.polyfit(t, values, 1)[0]
-    return float(slope)
+    t = np.arange(len(vals))
+    return float(np.polyfit(t, vals, 1)[0])
 
-range_slopes = df.groupby("Timestamp")["Range_clean"].apply(compute_range_slope).reset_index()
+range_slopes = new_df.groupby("Timestamp")["Range_clean"].apply(compute_range_slope).reset_index()
 range_slopes.columns = ["Timestamp", "Range_Slope"]
 
-# Signal quality index (lower movement = higher SQI)
-SQI = df.groupby("Timestamp").apply(
-    lambda g: float(1 / (g["Range_clean"].std() + 1e-6))
-).reset_index()
+def compute_sqi(group):
+    std = group["Range_clean"].std()
+    if pd.isna(std) or std == 0:
+        return 0.0
+    return float(1 / std)
+
+SQI = new_df.groupby("Timestamp").apply(compute_sqi).reset_index()
 SQI.columns = ["Timestamp", "SQI"]
 
-# Merge all features into run_stats
+# Merge all
 run_stats = (
-    run_stats
-    .merge(extra_features, on="Timestamp")
-    .merge(range_slopes, on="Timestamp")
-    .merge(SQI, on="Timestamp")
+    run_stats.merge(extra, on="Timestamp")
+             .merge(range_slopes, on="Timestamp")
+             .merge(SQI, on="Timestamp")
 )
 
-# -----------------------------------------
-# 6. APPLY CALIBRATION MODEL (for HR only)
-# -----------------------------------------
+# -----------------------------------------------------
+# 8. CLEAN ANY NaNs
+# -----------------------------------------------------
+fill_zero = ["Range_SD", "HR_SD", "RR_SD", "HR_P2P", "RR_P2P", "Range_Slope", "SQI"]
+for c in fill_zero:
+    run_stats[c] = run_stats[c].fillna(0.0)
+
+run_stats["Avg_HR_clean"] = run_stats["Avg_HR_clean"].fillna(0.0)
+run_stats["Avg_RR_clean"] = run_stats["Avg_RR_clean"].fillna(0.0)
+run_stats["Avg_Range"] = run_stats["Avg_Range"].fillna(0.0)
+
+# -----------------------------------------------------
+# 9. HR CALIBRATION (OFFSET)
+# -----------------------------------------------------
 OFFSET = 10.5
 run_stats["Final_Accurate_HR"] = run_stats["Avg_HR_clean"] + OFFSET
 
-# -----------------------------------------
-# 7. ASSIGN RUN NUMBERS
-# -----------------------------------------
+# -----------------------------------------------------
+# 10. ASSIGN RUN NUMBERS
+# -----------------------------------------------------
+last_run = prev["Run"].max() if len(prev) > 0 else 0
+
 run_stats = run_stats.sort_values("Timestamp").reset_index(drop=True)
-run_stats["Run"] = run_stats.index + 1
+run_stats["Run"] = run_stats.index + 1 + last_run
 
-# -----------------------------------------
-# 8. SAVE AS CSV LOCALLY
-# -----------------------------------------
-OUTPUT_DIR = r"C:\Users\Nikhil\Downloads\SSN\College Files\Grand Project\RespirationHealth\gpp-project\data_analysis"
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+# -----------------------------------------------------
+# 11. APPEND TO FINAL_RUN_STATS
+# -----------------------------------------------------
+write_header = not os.path.exists(FINAL_STATS_FILE)
 
-csv_path = os.path.join(OUTPUT_DIR, "final_run_stats.csv")
-run_stats.to_csv(csv_path, index=False)
+run_stats.to_csv(
+    FINAL_STATS_FILE,
+    mode="a",
+    index=False,
+    header=write_header
+)
 
-print(f"✔ CSV saved at: {csv_path}")
-
-# -----------------------------------------
-# 9. SAVE RUN STATS BACK TO FIRESTORE
-# -----------------------------------------
-run_stats_ref = db.collection("FinalStats")
-
-count = 0
-
-for _, row in run_stats.iterrows():
-    run_stats_ref.document(f"Run_{row['Run']}").set({
-        "Run": int(row["Run"]),
-        "Timestamp": row["Timestamp"],
-        "Rows": int(row["Rows"]),
-        "Avg_HR_clean": float(row["Avg_HR_clean"]),
-        "Avg_RR_clean": float(row["Avg_RR_clean"]),
-        "Avg_Range": float(row["Avg_Range"]),
-        "Range_SD": float(row["Range_SD"]),
-        "HR_SD": float(row["HR_SD"]),
-        "RR_SD": float(row["RR_SD"]),
-        "HR_P2P": float(row["HR_P2P"]),
-        "RR_P2P": float(row["RR_P2P"]),
-        "Range_Slope": float(row["Range_Slope"]),
-        "SQI": float(row["SQI"]),
-        "Final_Accurate_HR": float(row["Final_Accurate_HR"])
-    })
-    count += 1
-
-print(f"✔ Uploaded {count} run summaries to Firestore (FinalStats collection).")
+print("==============================================")
+print("✔ FINAL RUN STATS UPDATED SUCCESSFULLY")
+print(f"✔ New runs added: {len(run_stats)}")
+print(f"✔ Saved to: {FINAL_STATS_FILE}")
+print("==============================================")
