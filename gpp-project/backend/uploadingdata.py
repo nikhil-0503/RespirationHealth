@@ -12,7 +12,7 @@ db = firestore.client()
 # ----------------------------
 # 2. CSV FILE PATH
 # ----------------------------
-CSV_FILE = "vital_signs_data2.csv"   # <-- change if needed
+CSV_FILE = "vital_signs_new_data.csv"   # <-- change if needed
 
 # ----------------------------
 # 3. Upload Function
@@ -20,27 +20,35 @@ CSV_FILE = "vital_signs_data2.csv"   # <-- change if needed
 def upload_csv_to_firestore():
     print("\nUploading CSV data to Firestore...\n")
 
-    with open(CSV_FILE, "r") as f:
+    # Use utf-8-sig to remove BOM automatically
+    with open(CSV_FILE, "r", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
+
+        # Clean header names (remove BOM just in case)
+        reader.fieldnames = [name.replace("ï»¿", "") for name in reader.fieldnames]
 
         count = 0
         for row in reader:
-            # Convert string fields into correct numeric types
             try:
+                # Remove BOM from keys again (for safety)
+                clean_row = {k.replace("ï»¿", ""): v for k, v in row.items()}
+
+                # Convert string fields into correct numeric types
                 doc = {
-                    "Timestamp": row["Timestamp"],
-                    "User": row["User"],
-                    "SessionTime": float(row["SessionTime"]),
-                    "HeartRate_BPM": float(row["HeartRate_BPM"]),
-                    "RespirationRate_BPM": float(row["RespirationRate_BPM"]),
-                    "Range_m": float(row["Range_m"]),
-                    "HeartWaveform": float(row["HeartWaveform"]),
-                    "BreathWaveform": float(row["BreathWaveform"]),
-                    "HeartRate_FFT": float(row["HeartRate_FFT"]),
-                    "BreathRate_FFT": float(row["BreathRate_FFT"]),
-                    "ConfigurationFile": int(row["ConfigurationFile"])
+                    "Timestamp": clean_row["Timestamp"],
+                    "User": clean_row["User"],
+                    "SessionTime": float(clean_row["SessionTime"]),
+                    "HeartRate_BPM": float(clean_row["HeartRate_BPM"]),
+                    "RespirationRate_BPM": float(clean_row["RespirationRate_BPM"]),
+                    "Range_m": float(clean_row["Range_m"]),
+                    "HeartWaveform": float(clean_row["HeartWaveform"]),
+                    "BreathWaveform": float(clean_row["BreathWaveform"]),
+                    "HeartRate_FFT": float(clean_row["HeartRate_FFT"]),
+                    "BreathRate_FFT": float(clean_row["BreathRate_FFT"]),
+                    "ConfigurationFile": int(clean_row["ConfigurationFile"]),
                 }
 
+                # Upload to Firestore
                 db.collection("VitalSignsData").add(doc)
                 count += 1
 
