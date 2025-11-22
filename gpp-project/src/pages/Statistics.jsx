@@ -1,6 +1,5 @@
+// src/pages/Statistics.jsx
 import React, { useEffect, useState } from "react";
-import { Bar, Line, Pie } from "react-chartjs-2";
-import * as XLSX from "xlsx";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -11,8 +10,10 @@ import {
   ArcElement,
   Title,
   Tooltip,
-  Legend
+  Legend,
+  Filler,
 } from "chart.js";
+import { Bar, Line, Pie, Scatter } from "react-chartjs-2";
 
 ChartJS.register(
   CategoryScale,
@@ -23,154 +24,483 @@ ChartJS.register(
   ArcElement,
   Title,
   Tooltip,
-  Legend
+  Legend,
+  Filler
 );
 
-function computeStats(values) {
-  const mean = values.reduce((a, b) => a + b, 0) / values.length;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(values.length / 2);
-  const median = values.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const std = Math.sqrt(values.map(v => Math.pow(v - mean, 2)).reduce((a, b) => a + b, 0) / values.length);
+// === CONFIG: change if your Flask server runs elsewhere ===
+// Use environment variable VITE_EDA_BASE if set, otherwise fallback to localhost.
+const EDA_BACKEND_BASE = (import.meta && import.meta.env && import.meta.env.VITE_EDA_BASE) || "http://127.0.0.1:5001";
 
+// ===== Utilities =====
+function computeStats(values) {
+  const clean = (values || []).filter((v) => typeof v === "number" && !isNaN(v));
+  if (clean.length === 0) return { mean: 0, median: 0, min: 0, max: 0, std: 0, count: 0 };
+
+  const mean = clean.reduce((a, b) => a + b, 0) / clean.length;
+  const sorted = [...clean].sort((a, b) => a - b);
+  const mid = Math.floor(clean.length / 2);
+  const median = clean.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  const min = sorted[0];
+  const max = sorted[sorted.length - 1];
+  const variance = clean.map((v) => (v - mean) ** 2).reduce((a, b) => a + b, 0) / clean.length;
+  const std = Math.sqrt(variance);
+  return { mean, median, min, max, std, count: clean.length };
+}
+
+function histogramToBarData(bins, counts, label) {
+  if (!bins || !counts || bins.length < 2) return null;
+  const mids = [];
+  for (let i = 0; i < bins.length - 1; i++) {
+    const a = bins[i];
+    const b = bins[i + 1];
+    const mid = (Number(a) + Number(b)) / 2;
+    mids.push(mid.toFixed(2));
+  }
   return {
-    mean: mean.toFixed(2),
-    median: median.toFixed(2),
-    min: min.toFixed(2),
-    max: max.toFixed(2),
-    std: std.toFixed(2)
+    labels: mids,
+    datasets: [
+      {
+        label,
+        data: counts,
+        backgroundColor: "rgba(96,165,250,0.85)",
+      },
+    ],
   };
 }
 
-export default function Statistics() {
+function computeHistogramFromArray(values, bins = 20) {
+  const clean = (values || []).filter((v) => typeof v === "number" && !isNaN(v));
+  if (clean.length === 0) return { bins: [], counts: [] };
+  const min = Math.min(...clean);
+  const max = Math.max(...clean);
+  const binWidth = (max - min) / bins || 1;
+  const edges = [];
+  for (let i = 0; i <= bins; i++) edges.push(min + i * binWidth);
+  const counts = new Array(bins).fill(0);
+  for (const v of clean) {
+    let idx = Math.floor(((v - min) / (max - min || 1)) * bins);
+    if (idx === bins) idx = bins - 1;
+    if (idx < 0) idx = 0;
+    counts[idx] += 1;
+  }
+  return { bins: edges, counts };
+}
 
+// Defensive Boxplot component that won't crash when stats missing
+function Boxplot({ stats, title }) {
+  if (!stats || Object.keys(stats).length === 0) {
+    return (
+      <div className="bg-[#0b0b0b] border border-gray-700 rounded-xl p-4 shadow-md">
+        <div className="text-gray-400">{title}</div>
+        <div className="mt-2 text-gray-500">No data</div>
+      </div>
+    );
+  }
+
+  const padding = 12;
+  const width = 360;
+  const height = 140;
+  const left = padding;
+  const right = width - padding;
+
+  const min = Number(stats.min ?? 0);
+  const max = Number(stats.max ?? 1);
+  const q1 = Number(stats.q1 ?? min);
+  const q3 = Number(stats.q3 ?? max);
+  const median = Number(stats.median ?? (q1 + q3) / 2);
+  const range = max - min || 1;
+
+  const x = (v) => left + ((v - min) / range) * (right - left);
+
+  return (
+    <div className="bg-[#0b0b0b] border border-gray-700 rounded-xl p-6 shadow-md">
+      <div className="text-gray-200 font-semibold text-lg">{title}</div>
+
+      <svg width={width} height={height} className="mt-4">
+        <line x1={x(stats.lower_whisker ?? min)} y1={height/2}
+              x2={x(stats.upper_whisker ?? max)} y2={height/2}
+              stroke="#9CA3AF" strokeWidth="2" />
+
+        <line x1={x(stats.lower_whisker ?? min)} y1={height/2-8}
+              x2={x(stats.lower_whisker ?? min)} y2={height/2+8}
+              stroke="#9CA3AF" strokeWidth="2" />
+
+        <line x1={x(stats.upper_whisker ?? max)} y1={height/2-8}
+              x2={x(stats.upper_whisker ?? max)} y2={height/2+8}
+              stroke="#9CA3AF" strokeWidth="2" />
+
+        <rect x={x(q1)} y={height/2-14}
+              width={Math.max(2, x(q3) - x(q1))} height={28}
+              fill="#111827" stroke="#60A5FA" strokeWidth="2" rx="4" />
+
+        <line x1={x(median)} y1={height/2-16}
+              x2={x(median)} y2={height/2+16}
+              stroke="#FBBF24" strokeWidth="2.5" />
+
+        {(stats.outliers || []).map((o, idx) => (
+          <circle key={idx}
+                  cx={x(Number(o))}
+                  cy={height/2+26}
+                  r="3"
+                  fill="#EF4444" />
+        ))}
+      </svg>
+
+      {/* Each stat in its own line */}
+      <div
+        className="mt-4 text-gray-100 font-semibold space-y-1"
+        style={{ fontSize: "1rem" }}
+      >
+        <div>min: {min.toFixed(3)}</div>
+        <div>q1: {q1.toFixed(3)}</div>
+        <div>median: {median.toFixed(3)}</div>
+        <div>q3: {q3.toFixed(3)}</div>
+        <div>max: {max.toFixed(3)}</div>
+      </div>
+    </div>
+  );
+}
+
+
+// ===== Main component =====
+export default function Statistics() {
   useEffect(() => {
     document.title = "Radarix | Statistics";
   }, []);
 
-  const [stats, setStats] = useState(null);
+  const [rows, setRows] = useState([]); // run-level records from /eda/runs
+  const [loading, setLoading] = useState(true);
+  const [overviewStats, setOverviewStats] = useState(null);
+  const [anomalyStats, setAnomalyStats] = useState({ ok: 0, not_ok: 0 });
+
+
+  // chart states
   const [barData, setBarData] = useState(null);
   const [lineData, setLineData] = useState(null);
   const [pieData, setPieData] = useState(null);
+  const [scatterHRvsSQI, setScatterHRvsSQI] = useState(null);
+  const [scatterHRvsRangeSD, setScatterHRvsRangeSD] = useState(null);
+  const [mergedCorr, setMergedCorr] = useState(null);
+  const [anomalies, setAnomalies] = useState([]);
+
+  // histograms and boxplots
+  const [histHeart, setHistHeart] = useState(null);
+  const [histResp, setHistResp] = useState(null);
+  const [histRange, setHistRange] = useState(null);
+  const [histRangeSD, setHistRangeSD] = useState(null);
+  const [histSQI, setHistSQI] = useState(null);
+
+  const [boxHeart, setBoxHeart] = useState(null);
+  const [boxResp, setBoxResp] = useState(null);
+  const [boxRangeSD, setBoxRangeSD] = useState(null);
+
+  const [scatterHRvsRR, setScatterHRvsRR] = useState(null);
+  const [scatterHRvsRange, setScatterHRvsRange] = useState(null);
+  const [scatterFinalVsClean, setScatterFinalVsClean] = useState(null);
 
   useEffect(() => {
-    fetch("/Dataset_Vital_Signs.xlsx")
-      .then(res => res.arrayBuffer())
-      .then(data => {
-        const workbook = XLSX.read(data, { type: "array" });
-        const sheetName = workbook.SheetNames[0];
-        const sheet = workbook.Sheets[sheetName];
-        const jsonData = XLSX.utils.sheet_to_json(sheet);
-        processDataset(jsonData);
-      });
+    // load everything
+    fetchRuns();
+    fetchOverview();
+    fetchMergedCorrelation();
+    fetchAnomalies();
+
+    // histograms and boxplots (backend chooses sample vs run)
+    fetchHistogram("Heart_clean", setHistHeart);
+    fetchHistogram("Resp_clean", setHistResp);
+    fetchHistogram("Range_clean", setHistRange);
+
+    fetchBoxplot("Heart_clean", setBoxHeart);
+    fetchBoxplot("Resp_clean", setBoxResp);
+    fetchBoxplot("Range_clean", setBoxRangeSD);
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const processDataset = (dataset) => {
-    const categories = [...new Set(dataset.map(d => d.category))];
-    const numericFields = ["respiration_rate", "chest_displacement", "signal_strength"];
+  // ===== Fetch helpers with graceful handling =====
+  async function safeFetchJson(url) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) {
+        // return null for non-OK so callers can handle missing
+        return null;
+      }
+      const json = await res.json();
+      return json;
+    } catch (err) {
+      console.error("Fetch error:", url, err);
+      return null;
+    }
+  }
 
-    const statsObj = {};
-    categories.forEach(cat => {
-      const items = dataset.filter(d => d.category === cat);
-      statsObj[cat] = {};
-
-      numericFields.forEach(field => {
-        const values = items.map(d => parseFloat(d[field]));
-        statsObj[cat][field] = computeStats(values);
+  async function fetchRuns() {
+    setLoading(true);
+    try {
+      const json = await safeFetchJson(`${EDA_BACKEND_BASE}/eda/runs`);
+      if (!json) {
+        setRows([]);
+        setLoading(false);
+        return;
+      }
+      // json should be an array of run objects
+      const parsed = (json || []).map((r) => {
+        // parse numeric fields defensively
+        const copy = { ...r };
+        const numFields = ["Avg_HR_clean", "Avg_RR_clean", "Avg_Range", "Range_SD", "SQI", "Final_Accurate_HR", "Run", "Rows"];
+        numFields.forEach((f) => {
+          if (copy[f] !== undefined && copy[f] !== null && copy[f] !== "") {
+            copy[f] = Number(copy[f]);
+            if (isNaN(copy[f])) copy[f] = null;
+          } else {
+            copy[f] = null;
+          }
+        });
+        return copy;
       });
-    });
 
-    setStats(statsObj);
+      setRows(parsed);
+      prepareCharts(parsed);
+      prepareRunLevelHistograms(parsed);
+      prepareRunLevelBoxplots(parsed);
+      prepareExtraScatters(parsed);
+    } catch (err) {
+      console.error("Error fetching runs", err);
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  }
 
+  async function fetchOverview() {
+    const json = await safeFetchJson(`${EDA_BACKEND_BASE}/eda/overview`);
+    if (!json) {
+      setOverviewStats(null);
+      return;
+    }
+    setOverviewStats(json);
+  }
+
+  async function fetchMergedCorrelation() {
+    const json = await safeFetchJson(`${EDA_BACKEND_BASE}/eda/correlation_merged`);
+    if (!json) {
+      setMergedCorr(null);
+      return;
+    }
+    setMergedCorr(json);
+  }
+
+
+async function fetchAnomalies() {
+  const res = await fetch(`${EDA_BACKEND_BASE}/eda/anomalies`);
+  const json = await res.json();
+
+  // backend already returns { ok, not_ok }
+  setAnomalyStats({
+    ok: json.ok ?? 0,
+    not_ok: json.not_ok ?? 0,
+  });
+}
+
+
+
+  async function fetchHistogram(feature, setter) {
+    const json = await safeFetchJson(`${EDA_BACKEND_BASE}/eda/histogram?feature=${encodeURIComponent(feature)}&bins=30`);
+    if (!json || !json.bins || json.bins.length < 2) {
+      setter(null);
+      return;
+    }
+    setter(json);
+  }
+
+  async function fetchBoxplot(feature, setter) {
+    const json = await safeFetchJson(`${EDA_BACKEND_BASE}/eda/boxplot?feature=${encodeURIComponent(feature)}`);
+    if (!json || Object.keys(json).length === 0) {
+      setter(null);
+      return;
+    }
+    setter(json);
+  }
+
+  // ===== Prepare charts from run-level rows =====
+  function prepareCharts(data) {
+    const hr = data.map((d) => d.Avg_HR_clean).filter((v) => typeof v === "number" && !isNaN(v));
+    const rr = data.map((d) => d.Avg_RR_clean).filter((v) => typeof v === "number" && !isNaN(v));
+    const range = data.map((d) => d.Avg_Range).filter((v) => typeof v === "number" && !isNaN(v));
+    const rangeSD = data.map((d) => d.Range_SD).filter((v) => typeof v === "number" && !isNaN(v));
+    const sqi = data.map((d) => d.SQI).filter((v) => typeof v === "number" && !isNaN(v));
+    const finalHR = data.map((d) => d.Final_Accurate_HR).filter((v) => typeof v === "number" && !isNaN(v));
+
+    const statsOverview = {
+      Avg_HR_clean: computeStats(hr),
+      Avg_RR_clean: computeStats(rr),
+      Avg_Range: computeStats(range),
+      Range_SD: computeStats(rangeSD),
+      SQI: computeStats(sqi),
+      Final_Accurate_HR: computeStats(finalHR),
+      Runs: data.length,
+    };
+    setOverviewStats((prev) => ({ ...(prev || {}), ...statsOverview }));
+
+    const labels = data.map((d) => (d.Run ? `Run ${d.Run}` : (d.Timestamp || "").toString()));
+
+    // bar chart (avg vs final)
     setBarData({
-      labels: categories,
+      labels,
       datasets: [
         {
-          label: "Mean Respiration Rate",
-          data: categories.map(cat => statsObj[cat].respiration_rate.mean),
-          backgroundColor: ["#36A2EB", "#FF6384", "#FFCE56"]
-        }
-      ]
+          label: "Avg HR (clean)",
+          data: data.map((d) => (typeof d.Avg_HR_clean === "number" ? d.Avg_HR_clean : null)),
+          backgroundColor: "rgba(59,130,246,0.9)",
+        },
+        {
+          label: "Final Accurate HR",
+          data: data.map((d) => (typeof d.Final_Accurate_HR === "number" ? d.Final_Accurate_HR : null)),
+          backgroundColor: "rgba(239,68,68,0.9)",
+        },
+      ],
     });
 
+    // line chart with two y axes (simple)
     setLineData({
-      labels: categories,
-      datasets: numericFields.map((field, i) => ({
-        label: field.replace("_", " "),
-        data: categories.map(cat => statsObj[cat][field].mean),
-        borderColor: ["#36A2EB", "#FF6384", "#FFCE56"][i],
-        backgroundColor: "transparent",
-        fill: false,
-        tension: 0.3
-      }))
-    });
-
-    setPieData({
-      labels: categories,
+      labels,
       datasets: [
         {
-          label: "Mean Signal Strength",
-          data: categories.map(cat => statsObj[cat].signal_strength.mean),
-          backgroundColor: ["#36A2EB", "#FF6384", "#FFCE56"]
-        }
-      ]
+          label: "Avg HR (clean)",
+          data: data.map((d) => (typeof d.Avg_HR_clean === "number" ? d.Avg_HR_clean : null)),
+          borderColor: "#3b82f6",
+          backgroundColor: "rgba(59,130,246,0.07)",
+          tension: 0.3,
+          fill: true,
+          yAxisID: "y",
+        },
+        {
+          label: "Avg RR (clean)",
+          data: data.map((d) => (typeof d.Avg_RR_clean === "number" ? d.Avg_RR_clean : null)),
+          borderColor: "#fb7185",
+          backgroundColor: "rgba(251,113,133,0.07)",
+          tension: 0.3,
+          fill: true,
+          yAxisID: "y1",
+        },
+      ],
     });
-  };
 
-  const renderSummaryBoxes = (category) => (
-    <div key={category} style={{ margin: "20px 0" }}>
-      <h2 style={{ marginBottom: "15px", textAlign: "center", color: "white", fontSize: "32px", fontWeight: "bold" }}>
-        {category} Statistics
-      </h2>
+    // pie for SQI buckets (defensive)
+    const high = sqi.filter((v) => v >= 200).length;
+    const medium = sqi.filter((v) => v >= 50 && v < 200).length;
+    const low = sqi.filter((v) => v < 50).length;
+    setPieData({
+      labels: ["High SQI", "Medium SQI", "Low SQI"],
+      datasets: [
+        {
+          data: [high, medium, low],
+          backgroundColor: ["#10b981", "#f59e0b", "#ef4444"],
+        },
+      ],
+    });
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "20px", justifyContent: "center" }}>
-        {Object.keys(stats[category]).map(field => (
-          <div
-            key={field}
-            style={{
-              border: "1px solid #444",
-              borderRadius: "10px",
-              padding: "15px",
-              minWidth: "200px",
-              backgroundColor: "#1e1e1e",
-              color: "white",
-              boxShadow: "2px 2px 8px rgba(0,0,0,0.5)"
-            }}
-          >
-            <h3 style={{ textTransform: "capitalize", marginBottom: "10px", fontSize: "22px", fontWeight: "bold" }}>
-              {field.replace("_", " ")}
-            </h3>
+    // scatters
+    setScatterHRvsSQI({
+      datasets: [
+        {
+          label: "HR vs SQI",
+          data: data.map((d) => ({ x: d.SQI, y: d.Avg_HR_clean, run: d.Run })),
+          backgroundColor: "#3b82f6",
+          pointRadius: 4,
+        },
+      ],
+    });
 
-            <p><strong>Mean:</strong> {stats[category][field].mean}</p>
-            <p><strong>Median:</strong> {stats[category][field].median}</p>
-            <p><strong>Min:</strong> {stats[category][field].min}</p>
-            <p><strong>Max:</strong> {stats[category][field].max}</p>
-            <p><strong>Std Dev:</strong> {stats[category][field].std}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+    setScatterHRvsRangeSD({
+      datasets: [
+        {
+          label: "HR vs Range_SD",
+          data: data.map((d) => ({ x: d.Range_SD, y: d.Avg_HR_clean, run: d.Run })),
+          backgroundColor: "#f97316",
+          pointRadius: 4,
+        },
+      ],
+    });
+  }
 
-  if (!stats) {
+  function prepareRunLevelHistograms(data) {
+    const rangeSD = data.map((d) => d.Range_SD).filter((v) => typeof v === "number" && !isNaN(v));
+    const sqi = data.map((d) => d.SQI).filter((v) => typeof v === "number" && !isNaN(v));
+    setHistRangeSD(computeHistogramFromArray(rangeSD, 20));
+    setHistSQI(computeHistogramFromArray(sqi, 20));
+  }
+
+  function prepareRunLevelBoxplots(data) {
+    const vals = data.map((d) => d.Range_SD).filter((v) => typeof v === "number" && !isNaN(v));
+    if (vals.length === 0) {
+      setBoxRangeSD(null);
+      return;
+    }
+    const arr = vals.slice().sort((a, b) => a - b);
+    const q1 = quantile(arr, 0.25);
+    const q3 = quantile(arr, 0.75);
+    const median = quantile(arr, 0.5);
+    const iqr = q3 - q1;
+    const lw = q1 - 1.5 * iqr;
+    const uw = q3 + 1.5 * iqr;
+    const nonOut = arr.filter((v) => v >= lw && v <= uw);
+    const lower_whisker = nonOut.length ? nonOut[0] : arr[0];
+    const upper_whisker = nonOut.length ? nonOut[nonOut.length - 1] : arr[arr.length - 1];
+    const outliers = arr.filter((v) => v < lw || v > uw);
+    setBoxRangeSD({ q1, q3, median, iqr, lower_whisker, upper_whisker, min: arr[0], max: arr[arr.length - 1], outliers });
+  }
+
+  function prepareExtraScatters(data) {
+    setScatterHRvsRR({
+      datasets: [
+        {
+          label: "Avg HR vs Avg RR",
+          data: data.map((d) => ({ x: d.Avg_RR_clean, y: d.Avg_HR_clean, run: d.Run })),
+          backgroundColor: "#34D399",
+          pointRadius: 4,
+        },
+      ],
+    });
+
+    setScatterHRvsRange({
+      datasets: [
+        {
+          label: "Avg HR vs Avg Range",
+          data: data.map((d) => ({ x: d.Avg_Range, y: d.Avg_HR_clean, run: d.Run })),
+          backgroundColor: "#60A5FA",
+          pointRadius: 4,
+        },
+      ],
+    });
+
+    setScatterFinalVsClean({
+      datasets: [
+        {
+          label: "Final Accurate HR vs Avg Clean HR",
+          data: data.map((d) => ({ x: d.Avg_HR_clean, y: d.Final_Accurate_HR, run: d.Run })),
+          backgroundColor: "#F472B6",
+          pointRadius: 4,
+        },
+      ],
+    });
+  }
+
+  function quantile(sortedArr, q) {
+    const pos = (sortedArr.length - 1) * q;
+    const base = Math.floor(pos);
+    const rest = pos - base;
+    if (sortedArr[base + 1] !== undefined) {
+      return sortedArr[base] + rest * (sortedArr[base + 1] - sortedArr[base]);
+    } else {
+      return sortedArr[base];
+    }
+  }
+
+  if (loading) {
     return (
-      <div
-        style={{
-          width: "100vw",
-          height: "100vh",
-          backgroundColor: "#121212",
-          color: "white",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: "32px",
-          fontWeight: "bold",
-          overflowX: "hidden"
-        }}
-      >
-        Loading...
+      <div className="w-screen min-h-screen bg-black flex items-center justify-center">
+        <div className="text-gray-200 text-xl">Loading statistics...</div>
       </div>
     );
   }
@@ -178,62 +508,379 @@ export default function Statistics() {
   const chartOptions = {
     responsive: true,
     plugins: {
-      legend: { labels: { color: "white", font: { size: 16, weight: "bold" } } },
-      title: { display: false }
+      legend: { labels: { color: "white", font: { weight: "600" } } },
+      title: { display: false },
+      tooltip: { mode: "nearest" },
     },
     scales: {
-      x: { ticks: { color: "white" }, grid: { color: "#444" } },
-      y: { ticks: { color: "white" }, grid: { color: "#444" } }
-    }
+      x: { ticks: { color: "rgb(200,200,200)" }, grid: { color: "#1f2937" } },
+      y: { ticks: { color: "rgb(200,200,200)" }, grid: { color: "#1f2937" } },
+      y1: { position: "right", ticks: { color: "rgb(200,200,200)" } },
+    },
   };
 
-  const chartBoxStyle = {
-    backgroundColor: "#1e1e1e",
-    borderRadius: "10px",
-    padding: "20px",
-    margin: "20px auto",
-    maxWidth: "700px",
-    width: "90%",
-    boxShadow: "2px 2px 10px rgba(0,0,0,0.5)"
-  };
+  function renderCorrelationHeatmap(obj) {
+    if (!obj || !obj.columns || !obj.matrix || obj.columns.length === 0) {
+      return <div className="text-gray-400">No correlation data available.</div>;
+    }
+    const cols = obj.columns;
+    const matrix = obj.matrix;
+    const colorFor = (val) => {
+      if (val === null || val === undefined || isNaN(val)) return "#1f2937";
+      const v = Math.max(-1, Math.min(1, val));
+      const green = Math.round(((v + 1) / 2) * 200);
+      const red = Math.round(((1 - v) / 2) * 200);
+      const blue = 60;
+      return `rgb(${red}, ${green}, ${blue})`;
+    };
+    return (
+      <div className="overflow-auto">
+        <table className="min-w-full border-collapse">
+          <thead>
+            <tr>
+              <th className="px-2 py-1 text-left text-sm text-gray-300"> </th>
+              {cols.map((c) => <th key={c} className="px-2 py-1 text-sm text-gray-300">{c}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {cols.map((r, i) => (
+              <tr key={r}>
+                <td className="px-2 py-1 text-sm text-gray-200 font-medium">{r}</td>
+                {cols.map((c, j) => {
+                  const val = (matrix[i] && matrix[i][j] !== undefined) ? matrix[i][j] : null;
+                  const bg = val !== null ? colorFor(val) : "#111827";
+                  const display = (val === null || val === undefined || isNaN(val)) ? "-" : (Math.round(val * 1000) / 1000).toFixed(3);
+                  return (
+                    <td key={`${i}-${j}`} className="px-2 py-1 text-sm text-white" style={{ background: bg, textAlign: "center", minWidth: 80 }}>
+                      {display}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
 
   return (
-    <div
-      style={{
-        width: "100vw",
-        minHeight: "100vh",
-        textAlign: "center",
-        backgroundColor: "#121212",
-        padding: "20px",
-        overflowX: "hidden"
-      }}
-    >
-      <h1 style={{ color: "white", fontSize: "48px", marginBottom: "40px", fontWeight: "bold" }}>
-        Respiration Health Data Analysis
-      </h1>
+    <div className="flex flex-col items-center w-screen min-h-screen bg-black px-6 md:px-12 lg:px-20 pt-20 text-gray-200">
+      <h1 className="text-5xl md:text-6xl font-extrabold mb-2">Statistics</h1>
+      <p className="text-lg md:text-xl max-w-3xl text-center mb-8 text-gray-300">
+        Exploratory Data Analysis of radar-derived vitals. Data is loaded from the Flask EDA backend.
+      </p>
 
-      <div style={chartBoxStyle}>
-        <h2 style={{ color: "white", fontSize: "28px", marginBottom: "20px", fontWeight: "bold" }}>
-          Bar Chart: Mean Respiration Rate
-        </h2>
-        <Bar data={barData} options={chartOptions} />
+      {/* Top summary row */}
+<div className="w-full max-w-7xl grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+
+  {/* -------------------- OVERVIEW -------------------- */}
+  <div className="bg-[#0f0f0f] border border-gray-700 rounded-xl p-6 shadow-lg">
+    <h3 className="text-lg font-semibold text-gray-200">Overview</h3>
+
+    <p className="mt-2 text-sm text-gray-300">
+      Runs: <span className="font-medium text-gray-100">
+        {overviewStats?.runs ?? overviewStats?.runs_count ?? "-"}
+      </span>
+    </p>
+
+    <p className="mt-1 text-sm text-gray-300">
+      Avg HR: <span className="font-medium text-gray-100">
+        {overviewStats?.avg_hr ? overviewStats.avg_hr.toFixed(2) : "-"}
+      </span>
+    </p>
+
+    <p className="mt-1 text-sm text-gray-300">
+      Avg RR: <span className="font-medium text-gray-100">
+        {overviewStats?.avg_rr ? overviewStats.avg_rr.toFixed(2) : "-"}
+      </span>
+    </p>
+
+    <p className="mt-1 text-sm text-gray-300">
+      Avg Range: <span className="font-medium text-gray-100">
+        {overviewStats?.avg_range ? overviewStats.avg_range.toFixed(3) : "-"} m
+      </span>
+    </p>
+  </div>
+
+  {/* -------------------- SIGNAL QUALITY -------------------- */}
+  <div className="bg-[#0f0f0f] border border-gray-700 rounded-xl p-6 shadow-lg">
+    <h3 className="text-lg font-semibold text-gray-200">Signal Quality</h3>
+
+    <p className="mt-2 text-sm text-gray-300">
+      SQI Mean: <span className="font-medium text-gray-100">
+        {overviewStats?.sqi_mean ? overviewStats.sqi_mean.toFixed(2) : "-"}
+      </span>
+    </p>
+
+    <p className="mt-1 text-sm text-gray-300">
+      SQI Std: <span className="font-medium text-gray-100">
+        {overviewStats?.sqi_std ? overviewStats.sqi_std.toFixed(2) : "-"}
+      </span>
+    </p>
+
+    <p className="mt-1 text-sm text-gray-300">
+      Good SQI (&gt;200): <span className="font-medium text-gray-100">
+        {overviewStats?.good_sqi ?? 0}
+      </span>
+    </p>
+  </div>
+
+  {/* -------------------- FINAL CALIBRATED HR -------------------- */}
+  <div className="bg-[#0f0f0f] border border-gray-700 rounded-xl p-6 shadow-lg">
+    <h3 className="text-lg font-semibold text-gray-200">Final HR (calibrated)</h3>
+
+    <p className="mt-2 text-sm text-gray-300">
+      Mean: <span className="font-medium text-gray-100">
+        {overviewStats?.final_hr_mean ? overviewStats.final_hr_mean.toFixed(2) : "-"}
+      </span>
+    </p>
+
+    <p className="mt-1 text-sm text-gray-300">
+      Std: <span className="font-medium text-gray-100">
+        {overviewStats?.final_hr_std ? overviewStats.final_hr_std.toFixed(2) : "-"}
+      </span>
+    </p>
+
+    <p className="mt-1 text-sm text-gray-300">
+      Min / Max: <span className="font-medium text-gray-100">
+        {overviewStats?.final_hr_min?.toFixed
+          ? overviewStats.final_hr_min.toFixed(2)
+          : "-"}{" "}
+        /{" "}
+        {overviewStats?.final_hr_max?.toFixed
+          ? overviewStats.final_hr_max.toFixed(2)
+          : "-"}
+      </span>
+    </p>
+  </div>
+
+</div>
+
+
+      {/* Download comparison file */}
+      <div className="w-full max-w-7xl mb-6">
+        <div className="flex items-center justify-between bg-[#0f0f0f] border border-gray-700 rounded-xl p-4">
+          <div>
+            <h4 className="text-md font-medium text-gray-200">Run-level CSV</h4>
+            <p className="text-sm text-gray-300">Download the run CSV served by Flask for offline analysis.</p>
+          </div>
+          <div>
+            <a href={`${EDA_BACKEND_BASE}/download/comparison`} className="px-4 py-2 bg-[#111827] border border-gray-600 text-gray-200 rounded-lg hover:bg-[#1a1a1a]">Download CSV</a>
+          </div>
+        </div>
       </div>
 
-      <div style={chartBoxStyle}>
-        <h2 style={{ color: "white", fontSize: "28px", marginBottom: "20px", fontWeight: "bold" }}>
-          Line Chart: Mean Values of Fields
-        </h2>
-        <Line data={lineData} options={chartOptions} />
+      {/* Charts grid */}
+      <div className="w-full max-w-7xl grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-[#0f0f0f] border border-gray-700 rounded-xl p-6 shadow-lg">
+          <h3 className="text-lg font-semibold text-gray-200 mb-2">Avg HR & Final HR per Run</h3>
+          {barData && barData.labels && barData.labels.length > 0 ? <Bar data={barData} options={chartOptions} /> : <div className="text-gray-400">No run-level HR data to show.</div>}
+        </div>
+
+        <div className="bg-[#0f0f0f] border border-gray-700 rounded-xl p-6 shadow-lg">
+          <h3 className="text-lg font-semibold text-gray-200 mb-2">HR & RR Trends</h3>
+          {lineData && lineData.labels && lineData.labels.length > 0 ? <Line data={lineData} options={chartOptions} /> : <div className="text-gray-400">No trend data.</div>}
+        </div>
+
+        <div className="bg-[#0f0f0f] border border-gray-700 rounded-xl p-6 shadow-lg">
+  <h3 className="text-lg font-semibold text-gray-200 mb-3">Signal Quality Buckets</h3>
+
+  <div className="relative h-[260px]">
+    {pieData && pieData.datasets?.[0]?.data?.some((v) => v > 0) ? (
+      <Pie
+        data={pieData}
+        options={{
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              labels: { color: "white", font: { weight: 600 } },
+            },
+          },
+        }}
+      />
+    ) : (
+      <div className="text-gray-400">No SQI data.</div>
+    )}
+  </div>
+</div>
+
+
+
+        <div className="bg-[#0f0f0f] border border-gray-700 rounded-xl p-6 shadow-lg">
+  <h3 className="text-lg font-semibold text-gray-200 mb-3">HR vs SQI (scatter)</h3>
+
+  <div className="relative h-[260px]">
+    {scatterHRvsSQI && scatterHRvsSQI.datasets?.[0]?.data?.length > 0 ? (
+      <Scatter
+        data={scatterHRvsSQI}
+        options={{
+          ...chartOptions,
+          maintainAspectRatio: false,
+        }}
+      />
+    ) : (
+      <div className="text-gray-400">No scatter data.</div>
+    )}
+  </div>
+</div>
+
+
+
+        <div className="bg-[#0f0f0f] border border-gray-700 rounded-xl p-6 shadow-lg lg:col-span-2">
+  <h3 className="text-lg font-semibold text-gray-200 mb-2">HR vs Movement (Range SD)</h3>
+
+  <div className="relative h-[260px]"> 
+    {scatterHRvsRangeSD && scatterHRvsRangeSD.datasets?.[0]?.data?.length > 0 ? (
+      <Scatter
+        data={scatterHRvsRangeSD}
+        options={{
+          ...chartOptions,
+          maintainAspectRatio: false,
+        }}
+      />
+    ) : (
+      <div className="text-gray-400">No scatter data.</div>
+    )}
+  </div>
+</div>
+
       </div>
 
-      <div style={chartBoxStyle}>
-        <h2 style={{ color: "white", fontSize: "28px", marginBottom: "20px", fontWeight: "bold" }}>
-          Pie Chart: Mean Signal Strength
-        </h2>
-        <Pie data={pieData} />
+      {/* Histograms */}
+      <div className="w-full max-w-7xl mt-10">
+        <h2 className="text-2xl font-semibold mb-4">Distributions (Histograms)</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="bg-[#0b0b0b] border border-gray-700 rounded-xl p-4 shadow-md">
+            <h4 className="text-md text-gray-100 font-semibold mb-2">Heart Rate (samples)</h4>
+            {histHeart && histogramToBarData(histHeart.bins, histHeart.counts, "Heart (samples)") ? (
+              <Bar data={histogramToBarData(histHeart.bins, histHeart.counts, "Heart (samples)")} options={chartOptions} />
+            ) : (
+              <div className="text-gray-400">No sample-level heart data available.</div>
+            )}
+          </div>
+
+          <div className="bg-[#0b0b0b] border border-gray-700 rounded-xl p-4 shadow-md">
+            <h4 className="text-md text-gray-100 font-semibold mb-2">Respiration Rate (samples)</h4>
+            {histResp && histogramToBarData(histResp.bins, histResp.counts, "Resp (samples)") ? (
+              <Bar data={histogramToBarData(histResp.bins, histResp.counts, "Resp (samples)")} options={chartOptions} />
+            ) : (
+              <div className="text-gray-400">No sample-level respiration data available.</div>
+            )}
+          </div>
+
+          <div className="bg-[#0b0b0b] border border-gray-700 rounded-xl p-4 shadow-md">
+            <h4 className="text-md text-gray-100 font-semibold mb-2">Range / Distance (samples)</h4>
+            {histRange && histogramToBarData(histRange.bins, histRange.counts, "Range (samples)") ? (
+              <Bar data={histogramToBarData(histRange.bins, histRange.counts, "Range (samples)")} options={chartOptions} />
+            ) : (
+              <div className="text-gray-400">No sample-level range data available.</div>
+            )}
+          </div>
+
+          <div className="bg-[#0b0b0b] border border-gray-700 rounded-xl p-4 shadow-md">
+            <h4 className="text-md text-gray-100 font-semibold mb-2">Movement (Range_SD) — per run</h4>
+            {histRangeSD && histogramToBarData(histRangeSD.bins, histRangeSD.counts, "Range_SD (runs)") ? (
+              <Bar data={histogramToBarData(histRangeSD.bins, histRangeSD.counts, "Range_SD (runs)")} options={chartOptions} />
+            ) : (
+              <div className="text-gray-400">No run-level Range_SD data.</div>
+            )}
+          </div>
+
+          <div className="bg-[#0b0b0b] border border-gray-700 rounded-xl p-4 shadow-md">
+            <h4 className="text-md text-gray-100 font-semibold mb-2">Signal Quality Index (SQI) — per run</h4>
+            {histSQI && histogramToBarData(histSQI.bins, histSQI.counts, "SQI (runs)") ? (
+              <Bar data={histogramToBarData(histSQI.bins, histSQI.counts, "SQI (runs)")} options={chartOptions} />
+            ) : (
+              <div className="text-gray-400">No SQI data available.</div>
+            )}
+          </div>
+        </div>
       </div>
 
-      {Object.keys(stats).map(cat => renderSummaryBoxes(cat))}
+      {/* Scatter plots */}
+      <div className="w-full max-w-7xl mt-10">
+        <h2 className="text-2xl font-semibold mb-4">Relationship Analysis (Scatter plots)</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-[#0b0b0b] border border-gray-700 rounded-xl p-4 shadow-md">
+            <h4 className="text-md text-gray-100 font-semibold mb-2">Avg HR vs Avg RR (per run)</h4>
+            {scatterHRvsRR ? <Scatter data={scatterHRvsRR} options={chartOptions} /> : <div className="text-gray-400">No data</div>}
+          </div>
+
+          <div className="bg-[#0b0b0b] border border-gray-700 rounded-xl p-4 shadow-md">
+            <h4 className="text-md text-gray-100 font-semibold mb-2">Avg HR vs Avg Range (per run)</h4>
+            {scatterHRvsRange ? <Scatter data={scatterHRvsRange} options={chartOptions} /> : <div className="text-gray-400">No data</div>}
+          </div>
+
+          <div className="bg-[#0b0b0b] border border-gray-700 rounded-xl p-4 shadow-md">
+            <h4 className="text-md text-gray-100 font-semibold mb-2">Final Accurate HR vs Avg Clean HR (calibration)</h4>
+            {scatterFinalVsClean ? <Scatter data={scatterFinalVsClean} options={chartOptions} /> : <div className="text-gray-400">No data</div>}
+            <p className="text-xs text-gray-400 mt-2">This shows how calibration shifted the sensor HR toward the final accurate values.</p>
+          </div>
+
+          <div className="bg-[#0b0b0b] border border-gray-700 rounded-xl p-4 shadow-md">
+            <h4 className="text-md text-gray-100 font-semibold mb-2">Avg HR vs SQI (per run)</h4>
+            {scatterHRvsSQI ? <Scatter data={scatterHRvsSQI} options={chartOptions} /> : <div className="text-gray-400">No data</div>}
+          </div>
+        </div>
+      </div>
+
+      {/* Boxplots */}
+      <div className="w-full max-w-7xl mt-10">
+        <h2 className="text-2xl font-semibold mb-4">Boxplots & Outliers</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <Boxplot stats={boxHeart} title="Heart Rate (samples) — boxplot" />
+          <Boxplot stats={boxResp} title="Respiration Rate (samples) — boxplot" />
+          <Boxplot stats={boxRangeSD} title="Range SD (runs) — boxplot" />
+        </div>
+      </div>
+
+      {/* Correlation heatmap (merged) */}
+      <div className="w-full max-w-7xl mt-10">
+        <h2 className="text-2xl font-semibold mb-4">Merged Correlation (Cleaned Samples + Final Statistics)</h2>
+        <div className="bg-[#0b0b0b] border border-gray-700 rounded-xl p-4 shadow-md">
+          <p className="text-sm text-gray-400 mb-2">Correlation computed by merging cleaned sample-level data with run-level FinalStats by nearest Timestamp.</p>
+          {renderCorrelationHeatmap(mergedCorr)}
+        </div>
+      </div>
+
+      {/* Run summaries */}
+      <div className="w-full max-w-7xl mt-10">
+        <h2 className="text-2xl font-semibold mb-4">Run Summaries (last 3 runs)</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {rows.slice(-3).map((r) => (
+            <div key={r.Run ?? r.id} className="bg-[#0b0b0b] border border-gray-700 rounded-xl p-4 shadow-md">
+              <h4 className="text-md text-gray-100 font-semibold mb-2">Run {r.Run ?? "-"} — <span className="text-sm text-gray-400">{r.Timestamp}</span></h4>
+              <p className="text-sm text-gray-300"><strong>Avg HR:</strong> {r.Avg_HR_clean == null ? "-" : Number(r.Avg_HR_clean).toFixed(2)} bpm</p>
+              <p className="text-sm text-gray-300"><strong>Final HR:</strong> {r.Final_Accurate_HR == null ? "-" : Number(r.Final_Accurate_HR).toFixed(2)} bpm</p>
+              <p className="text-sm text-gray-300"><strong>Avg RR:</strong> {r.Avg_RR_clean == null ? "-" : Number(r.Avg_RR_clean).toFixed(2)} bpm</p>
+              <p className="text-sm text-gray-300"><strong>Avg Range:</strong> {r.Avg_Range == null ? "-" : Number(r.Avg_Range).toFixed(3)} m</p>
+              <p className="text-sm text-gray-300"><strong>Range SD:</strong> {r.Range_SD == null ? "-" : Number(r.Range_SD).toFixed(4)}</p>
+              <p className="text-sm text-gray-300"><strong>SQI:</strong> {r.SQI == null ? "-" : Number(r.SQI).toFixed(2)}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+      {/* Anomalies Summary */}
+      <div className="w-full max-w-7xl mt-10">
+        <h2 className="text-2xl font-semibold mb-4">Detected Anomalies</h2>
+
+        <div className="bg-[#0f0f0f] border border-gray-700 rounded-xl p-6 shadow-lg">
+          <p className="text-sm text-gray-300">
+            OK Runs: <span className="font-medium text-green-400">{anomalyStats?.ok ?? 0}</span>
+          </p>
+
+          <p className="mt-2 text-sm text-gray-300">
+            Not OK Runs: <span className="font-medium text-red-400">{anomalyStats?.not_ok ?? 0}</span>
+          </p>
+        </div>
+      </div>
+
+
+      <div className="w-full max-w-7xl mt-8 mb-12 text-center text-gray-400">
+        <small>Radarix, 2025</small>
+      </div>
     </div>
   );
 }
