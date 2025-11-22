@@ -1,8 +1,5 @@
-// src/pages/Signup.jsx
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { createUserWithEmailAndPassword } from "firebase/auth";
-import { auth } from "../firebase";
 
 export default function Signup() {
   const navigate = useNavigate();
@@ -36,22 +33,31 @@ export default function Signup() {
     setLoading(true);
 
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
+      const response = await fetch("http://localhost:5003/add-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
       setLoading(false);
-      navigate("/login");
+
+      if (data.success) {
+        navigate("/login");
+      } else {
+        setErrorMsg(data.message || "Could not create account.");
+      }
     } catch (err) {
-      setLoading(false);
       console.error(err);
-      setErrorMsg("Could not create account.");
+      setLoading(false);
+      setErrorMsg("Connection error. Make sure backend is running.");
     }
   };
 
   return (
     <div className="w-screen min-h-screen bg-black text-gray-200 overflow-hidden">
-
       <div className="pt-24 flex justify-center px-4">
-
-        <div className="bg-[#0f0f0f] p-8 rounded-2xl shadow-xl shadow-black/60 w-full max-w-md border border-gray-800">
+        <div className="bg-[#0f0f0f] p-8 rounded-2xl shadow-xl w-full max-w-md border border-gray-800">
 
           <h2 className="text-3xl font-bold mb-6 text-center">Create Account</h2>
 
@@ -68,8 +74,7 @@ export default function Signup() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full px-4 py-2 rounded-lg bg-[#111111] border border-gray-700 text-gray-200
-                           focus:outline-none focus:ring-0 focus:border-gray-500"
+                className="w-full px-4 py-2 rounded-lg bg-[#111111] border border-gray-700"
               />
             </div>
 
@@ -80,8 +85,7 @@ export default function Signup() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="w-full px-4 py-2 rounded-lg bg-[#111111] border border-gray-700 text-gray-200
-                           focus:outline-none focus:ring-0 focus:border-gray-500"
+                className="w-full px-4 py-2 rounded-lg bg-[#111111] border border-gray-700"
               />
             </div>
 
@@ -92,16 +96,14 @@ export default function Signup() {
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
                 required
-                className="w-full px-4 py-2 rounded-lg bg-[#111111] border border-gray-700 text-gray-200
-                           focus:outline-none focus:ring-0 focus:border-gray-500"
+                className="w-full px-4 py-2 rounded-lg bg-[#111111] border border-gray-700"
               />
             </div>
 
             <button
               type="submit"
-              className="w-full py-2 rounded-lg font-semibold bg-[#2a2a2a] border border-gray-700 text-gray-200
-                         hover:bg-[#333333] hover:border-gray-500 hover:text-white transition"
               disabled={loading}
+              className="w-full py-2 rounded-lg font-semibold bg-[#2a2a2a] border border-gray-700"
             >
               {loading ? "Creating account..." : "Sign Up"}
             </button>

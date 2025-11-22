@@ -3,34 +3,38 @@ from flask_cors import CORS
 import subprocess
 import sys
 import io
+import csv
+import os
 
-import firebase_admin
-from firebase_admin import credentials, firestore
-
-# -----------------------------
-# Initialize Firebase Admin SDK
-# -----------------------------
-cred = credentials.Certificate("serviceAccountKey.json")
-firebase_admin.initialize_app(cred)
-db = firestore.client()
-
-# Ensure proper UTF-8 output handling
+# UTF-8 output
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 app = Flask(__name__)
-CORS(app)   # Allow React frontend to communicate with Flask
+CORS(app)
+
+# Path to users.csv
+CSV_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "users.csv")
 
 
-# ================================
-# POST /run-sensor endpoint
-# ================================
+def user_exists(email):
+    """Check if user email exists in users.csv"""
+    if not os.path.exists(CSV_FILE):
+        return False
+
+    with open(CSV_FILE, "r") as f:
+        reader = csv.reader(f)
+        next(reader, None)  # skip header
+        for row in reader:
+            if row and row[0].strip().lower() == email.lower():
+                return True
+    return False
+
+
 @app.post("/run-sensor")
 def run_sensor():
-
     try:
-        # Read JSON body from React
+        # React request
         data = request.get_json()
-
         user_email = data.get("userEmail")
         config_number = data.get("configuration")
 
@@ -40,12 +44,19 @@ def run_sensor():
                 "error": "Missing userEmail or configuration in request."
             })
 
-        print("\n--- Received Request from React ---")
+        print("\n--- Sensor Request Received ---")
         print("User Email:", user_email)
-        print("Configuration File:", config_number)
-        print("-----------------------------------\n")
+        print("Selected Config:", config_number)
+        print("--------------------------------\n")
 
-        # Run vst.py and pass arguments
+        # 🔥 VALIDATE USER FROM CSV
+        if not user_exists(user_email):
+            return jsonify({
+                "success": False,
+                "error": "User does not exist in users.csv. Please sign up first."
+            })
+
+        # Run your Python sensor script
         process = subprocess.Popen(
             [sys.executable, "vst.py", user_email, str(config_number)],
             stdout=subprocess.PIPE,
@@ -55,30 +66,17 @@ def run_sensor():
 
         stdout, stderr = process.communicate()
 
-        # On error
         if process.returncode != 0:
             print("Error running vst.py:", stderr)
-            return jsonify({
-                "success": False,
-                "error": stderr
-            })
+            return jsonify({"success": False, "error": stderr})
 
-        # On success
-        return jsonify({
-            "success": True,
-            "output": stdout
-        })
+        return jsonify({"success": True, "output": stdout})
 
     except Exception as e:
         print("Backend Error:", str(e))
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        })
+        return jsonify({"success": False, "error": str(e)})
 
 
-# -----------------------------
-# Start Flask Server
-# -----------------------------
 if __name__ == "__main__":
-    app.run(host="localhost", port=5001, debug=True)
+    print("🔗 Using CSV file:", CSV_FILE)
+    app.run(host="localhost", port=5004, debug=True)

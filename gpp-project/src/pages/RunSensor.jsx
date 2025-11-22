@@ -39,33 +39,31 @@ function RunSensor() {
   const [popupTitle, setPopupTitle] = useState("");
 
   const [config, setConfig] = useState(null); // 0 = front, 1 = back
+  const [selectedFile, setSelectedFile] = useState(null);
 
   // Load user email stored during login
   const userEmail = localStorage.getItem("loggedUser");
 
   const handleRunSensor = () => {
 
-    // If email not found (localStorage cleared or login expired)
     if (!userEmail) {
       setPopupTitle("Login Required");
       setPopupMessage("Please log in again. User email not found.");
       return;
     }
 
-    // If config not selected
     if (config === null) {
       setPopupTitle("Configuration Missing");
       setPopupMessage("Please select Front or Back configuration before running the sensor.");
       return;
     }
 
-    // --- THIS IS THE IMPORTANT CHANGE ---
-    fetch("http://localhost:5001/run-sensor", {
+    fetch("http://localhost:5002/run-sensor", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        userEmail: userEmail,  // send email to Flask
-        configuration: config  // send configuration number
+        userEmail: userEmail,
+        configuration: config
       })
     })
       .then((res) => res.json())
@@ -81,6 +79,41 @@ function RunSensor() {
       .catch(() => {
         setPopupTitle("Connection Error!");
         setPopupMessage("Cannot connect to backend. Run the backend server and try again.");
+      });
+  };
+
+  // ---------------------------------------------------------
+  // NEW: Handle CSV Upload
+  // ---------------------------------------------------------
+  const handleUploadCsv = () => {
+    if (!selectedFile) {
+      setPopupTitle("No File Selected");
+      setPopupMessage("Please upload a CSV file first.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+
+    fetch("http://localhost:5002/upload-data", {
+      method: "POST",
+      body: formData
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) {
+          setPopupTitle("Processing Complete");
+          setPopupMessage(
+            `Uploaded & Processed Successfully!\n\nPredicted Final HR: ${data.predicted_hr}`
+          );
+        } else {
+          setPopupTitle("Error Processing File");
+          setPopupMessage(data.error || "Pipeline execution failed.");
+        }
+      })
+      .catch(() => {
+        setPopupTitle("Server Error");
+        setPopupMessage("Backend not reachable. Please run Flask backend.");
       });
   };
 
@@ -105,7 +138,6 @@ function RunSensor() {
 
         <div className="flex flex-col gap-4">
 
-          {/* FRONT Configuration */}
           <label
             className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer border 
               ${config === 0 ? "border-gray-400 bg-[#1d1d1d]" : "border-gray-700 bg-[#131313] hover:border-gray-500"}`}
@@ -121,7 +153,6 @@ function RunSensor() {
             <span className="text-gray-200">Front Configuration</span>
           </label>
 
-          {/* BACK Configuration */}
           <label
             className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer border 
               ${config === 1 ? "border-gray-400 bg-[#1d1d1d]" : "border-gray-700 bg-[#131313] hover:border-gray-500"}`}
@@ -148,6 +179,27 @@ function RunSensor() {
       >
         Run the Sensor
       </button>
+
+      {/* NEW: Upload CSV Section */}
+      <div className="w-full max-w-xl bg-[#0f0f0f] border border-gray-700 rounded-xl p-6 mt-10 shadow-lg">
+        <label className="block text-lg font-semibold mb-4 text-center">
+          Upload Radar Data (CSV)
+        </label>
+
+        <input
+          type="file"
+          accept=".csv"
+          onChange={(e) => setSelectedFile(e.target.files[0])}
+          className="block w-full text-gray-200 border border-gray-600 rounded-lg p-2 bg-[#1a1a1a]"
+        />
+
+        <button
+          onClick={handleUploadCsv}
+          className="mt-4 w-full px-6 py-3 border border-gray-600 text-gray-200 rounded-lg transition hover:bg-[#1a1a1a]"
+        >
+          Upload & Process File
+        </button>
+      </div>
 
       {/* Popup */}
       <ErrorPopup

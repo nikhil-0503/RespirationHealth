@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth } from "../firebase";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -13,30 +11,43 @@ export default function Login() {
     document.title = "Radarix";
   }, []);
 
+  // Load CSV and check credentials
+  const validateUser = async (email, password) => {
+  const response = await fetch("http://localhost:5003/get-users");
+  const data = await response.text();
+
+  const rows = data.trim().split("\n");
+  const users = rows.slice(1).map((row) => {
+    const [csvEmail, csvPass] = row.split(",");
+    return { email: csvEmail.trim(), password: csvPass.trim() };
+  });
+
+  return users.find(
+    (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
+  );
+};
+
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg("");
 
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const user = await validateUser(email, password);
 
-      // 👉 THIS IS NEW — Save logged-in user email
+      if (!user) {
+        setErrorMsg("Invalid email or password.");
+        return;
+      }
+
+      // Save logged in user
       localStorage.setItem("loggedUser", email);
-
-      // Existing login flag
       localStorage.setItem("logged_in", "true");
 
       navigate("/home");
-    } catch (err) {
-      console.error(err);
-
-      if (err.code === "auth/user-not-found") {
-        setErrorMsg("No account found with this email.");
-      } else if (err.code === "auth/wrong-password") {
-        setErrorMsg("Incorrect password.");
-      } else {
-        setErrorMsg("Login failed. Try again.");
-      }
+    } catch (error) {
+      console.error(error);
+      setErrorMsg("Login failed. Try again.");
     }
   };
 
