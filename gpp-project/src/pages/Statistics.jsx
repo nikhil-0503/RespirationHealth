@@ -568,7 +568,7 @@ async function fetchAnomalies() {
     <div className="flex flex-col items-center w-screen min-h-screen bg-black px-6 md:px-12 lg:px-20 pt-20 text-gray-200">
       <h1 className="text-5xl md:text-6xl font-extrabold mb-2">Statistics</h1>
       <p className="text-lg md:text-xl max-w-3xl text-center mb-8 text-gray-300">
-        Exploratory Data Analysis of radar-derived vitals. Data is loaded from the Flask EDA backend.
+        Exploratory Data Analysis of radar-derived vitals.
       </p>
 
       {/* Top summary row */}

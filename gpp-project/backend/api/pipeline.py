@@ -1,12 +1,13 @@
 from flask import Flask, request, jsonify
-from flask_cors import CORS    # ✅ ADDED (Fixes React CORS error)
+from flask_cors import CORS
 import pandas as pd
 import subprocess
 import os
 import traceback
+import json
 
 app = Flask(__name__)
-CORS(app)                       # ✅ ADDED (Allows React → Flask requests)
+CORS(app)
 
 BASE_DIR = r"C:\Users\Nikhil\Downloads\SSN\College Files\Grand Project\RespirationHealth\gpp-project"
 
@@ -15,9 +16,10 @@ CLEAN_SCRIPT = os.path.join(BASE_DIR, "data_analysis", "cleaning_data.py")
 CALIB_SCRIPT = os.path.join(BASE_DIR, "data_analysis", "calibration.py")
 MODEL_SCRIPT = os.path.join(BASE_DIR, "data_analysis", "predict_with_model.py")
 
-# -----------------------------------------------------------
-# 1️⃣ UPLOAD CSV & APPEND TO vital_signs_new_data.csv
-# -----------------------------------------------------------
+
+# ------------------------------------------------------------------
+# 1️⃣ UPLOAD CSV
+# ------------------------------------------------------------------
 @app.route("/upload", methods=["POST"])
 def upload_csv():
     try:
@@ -26,8 +28,6 @@ def upload_csv():
             return jsonify({"error": "No file uploaded"}), 400
 
         df = pd.read_csv(file)
-
-        # Append to raw file
         df.to_csv(RAW_FILE, mode="a", header=False, index=False)
 
         return jsonify({"message": "File received and appended!"})
@@ -35,24 +35,46 @@ def upload_csv():
     except Exception as e:
         return jsonify({"error": str(e), "trace": traceback.format_exc()})
 
-# -----------------------------------------------------------
-# 2️⃣ RUN CLEANING → CALIBRATION → ML MODEL
-# -----------------------------------------------------------
+
+# ------------------------------------------------------------------
+# 2️⃣ RUN FULL PIPELINE (clean → calibrate → model)
+# ------------------------------------------------------------------
 @app.route("/run_pipeline", methods=["POST"])
 def run_pipeline():
     try:
-        # Run cleaning_data.py
+        # Step 1: Cleaning
         subprocess.run(["python", CLEAN_SCRIPT], check=True)
 
-        # Run calibration pipeline (feature extraction)
+        # Step 2: Calibration & feature extraction
         subprocess.run(["python", CALIB_SCRIPT], check=True)
 
-        # Run ML inference script
-        output = subprocess.check_output(["python", MODEL_SCRIPT], text=True)
+        # Step 3: ML model inference (returns Python dict printed as text)
+        raw_output = subprocess.check_output(["python", MODEL_SCRIPT], text=True).strip()
+
+        # Clean and parse safely
+        ml_output = None
+
+        # Try parsing clean JSON (if printed already in JSON form)
+        try:
+            ml_output = json.loads(raw_output)
+        except:
+            pass
+
+        # Try parsing Python dict style
+        if ml_output is None:
+            try:
+                safe = raw_output.replace("'", '"')
+                ml_output = json.loads(safe)
+            except:
+                pass
+
+        # Final fallback → send raw output
+        if ml_output is None:
+            ml_output = {"raw_output": raw_output}
 
         return jsonify({
             "message": "Pipeline completed",
-            "model_output": output
+            "ml_results": ml_output
         })
 
     except subprocess.CalledProcessError as e:
@@ -62,12 +84,17 @@ def run_pipeline():
             "trace": traceback.format_exc()
         })
 
-# -----------------------------------------------------------
-# Simple health check
-# -----------------------------------------------------------
+
+# ------------------------------------------------------------------
+# 3️⃣ HEALTH CHECK
+# ------------------------------------------------------------------
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({"status": "Radar pipeline API running"})
 
+
+# ------------------------------------------------------------------
+# START SERVER
+# ------------------------------------------------------------------
 if __name__ == "__main__":
     app.run(port=5002, debug=True, use_reloader=False)

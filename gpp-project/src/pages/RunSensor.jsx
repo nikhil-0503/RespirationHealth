@@ -19,7 +19,7 @@ function ErrorPopup({ message, onClose, title = "Message" }) {
           <button
             onClick={onClose}
             className="px-6 py-2 border border-gray-600 rounded-lg text-gray-200 transition outline-none ring-0 
-                       focus:ring-0 focus:outline-none hover:bg-[#1a1a1a] hover:border-gray-400 hover:text-white"
+                       focus:ring-0 hover:bg-[#1a1a1a] hover:border-gray-400 hover:text-white"
           >
             Close
           </button>
@@ -41,13 +41,15 @@ function RunSensor() {
   const [config, setConfig] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
 
-  // NEW: store ML predicted HR on screen
+  // ML RESULTS
   const [predictedHR, setPredictedHR] = useState(null);
+  const [hrClass, setHrClass] = useState(null);
+  const [rrClass, setRrClass] = useState(null);
+  const [stressClass, setStressClass] = useState(null);
 
   const userEmail = localStorage.getItem("loggedUser");
 
   const handleRunSensor = () => {
-
     if (!userEmail) {
       setPopupTitle("Login Required");
       setPopupMessage("Please log in again. User email not found.");
@@ -84,9 +86,29 @@ function RunSensor() {
       });
   };
 
-  // ---------------------------------------------------------
-  // UPDATED: PIPELINE STATUS POPUP + SHOW HR ON PAGE
-  // ---------------------------------------------------------
+  // COLOR FUNCTION ------------------------
+const getColorClass = (label) => {
+  if (!label) return "text-gray-300";
+
+  const value = label.toLowerCase();
+
+  if (["normal", "relaxed"].includes(value))
+    return "text-green-400";
+
+  if (["low", "moderate"].includes(value))
+    return "text-yellow-400";
+
+  if (["high", "stressed"].includes(value))
+    return "text-red-400";
+
+  return "text-gray-300";
+};
+
+  //----------------------------------------
+
+  // ---------------------------------------------
+  // PIPELINE: Upload → Cleaning → Calibration → ML
+  // ---------------------------------------------
   const handleUploadCsv = async () => {
     if (!selectedFile) {
       setPopupTitle("No File Selected");
@@ -95,7 +117,7 @@ function RunSensor() {
     }
 
     try {
-      // STEP 1: Upload raw CSV
+      // Upload file
       setPopupTitle("Uploading...");
       setPopupMessage("Uploading CSV file...");
       
@@ -108,37 +130,31 @@ function RunSensor() {
       });
 
       const uploadData = await uploadRes.json();
-
       if (!uploadData.message) {
         setPopupTitle("Upload Error");
         setPopupMessage(uploadData.error || "Failed to upload CSV file.");
         return;
       }
 
-      // STEP 2: Cleaning message
+      // Run pipeline
       setPopupTitle("Processing...");
-      setPopupMessage("Cleaning data...\nExtracting samples...");
+      setPopupMessage("Cleaning...\nCalibrating...\nExtracting features...\nRunning ML model...");
 
-      // STEP 3: Run pipeline
-      setPopupMessage("Cleaning data...\nCalibrating...\nExtracting features...");
-
-      const pipeRes = await fetch("http://localhost:5002/run_pipeline", {
-        method: "POST"
-      });
-
-      // Running ML model
-      setPopupMessage("Cleaning data...\nCalibrating...\nExtracting features...\nRunning ML model...");
-
+      const pipeRes = await fetch("http://localhost:5002/run_pipeline", { method: "POST" });
       const pipeData = await pipeRes.json();
 
-      // STEP 4: FINISH + DISPLAY HR ON SCREEN
-      if (pipeData.model_output) {
-        setPredictedHR(pipeData.model_output);  // SHOW ON PAGE
+      if (pipeData.ml_results) {
+        const r = pipeData.ml_results;
+
+        // Store all ML results
+        setPredictedHR(r.Predicted_HR);
+        setHrClass(r.HR_Class);
+        setRrClass(r.RR_Class);
+        setStressClass(r.Stress_Class);
 
         setPopupTitle("Success!");
-        setPopupMessage(
-          "Uploaded & Processed Successfully!\nML model output is displayed on the page."
-        );
+        setPopupMessage("Uploaded & Processed Successfully!\nML results displayed below.");
+
       } else {
         setPopupTitle("Pipeline Error");
         setPopupMessage(pipeData.error || "Pipeline failed.");
@@ -150,6 +166,7 @@ function RunSensor() {
     }
   };
 
+  // UI START --------------------------------------------------
   return (
     <div className="flex flex-col items-center justify-start w-screen min-h-screen bg-black px-6 md:px-12 lg:px-20 pt-20 text-gray-200">
 
@@ -160,10 +177,8 @@ function RunSensor() {
       </h2>
 
       <p className="text-lg md:text-xl max-w-20xl text-center mb-10">
-        Use this page to initiate the UWB radar sensor and monitor live physiological signals instantly.
+        Use this page to initiate the UWB radar sensor and process physiological signals instantly.
       </p>
-
-      
 
       {/* Configuration Section */}
       <div className="w-full max-w-xl bg-[#0f0f0f] border border-gray-700 rounded-xl p-6 mt-4 shadow-lg">
@@ -172,7 +187,6 @@ function RunSensor() {
         </label>
 
         <div className="flex flex-col gap-4">
-
           <label
             className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer border 
               ${config === 0 ? "border-gray-400 bg-[#1d1d1d]" : "border-gray-700 bg-[#131313] hover:border-gray-500"}`}
@@ -202,15 +216,13 @@ function RunSensor() {
             />
             <span className="text-gray-200">Back Configuration</span>
           </label>
-
         </div>
       </div>
 
       {/* Run Sensor Button */}
       <button
         onClick={handleRunSensor}
-        className="mt-4 px-6 py-3 border border-gray-600 text-gray-200 rounded-lg transition outline-none ring-0 
-                   focus:ring-0 focus:outline-none hover:bg-[#1a1a1a] hover:border-gray-400 hover:text-white"
+        className="mt-4 px-6 py-3 border border-gray-600 text-gray-200 rounded-lg transition hover:bg-[#1a1a1a] hover:border-gray-400 hover:text-white"
       >
         Run the Sensor
       </button>
@@ -235,13 +247,36 @@ function RunSensor() {
           Upload & Process File
         </button>
       </div>
-      {/* NEW: DISPLAY ML RESULT */}
-      {predictedHR && (
-        <div className="w-full max-w-xl bg-[#0f0f0f] border border-green-600 rounded-xl p-6 mt-4 shadow-lg text-center">
-          <h3 className="text-2xl font-bold text-green-400 mb-2">Predicted Heart Rate</h3>
-          <p className="text-4xl font-extrabold text-white">{predictedHR}</p>
-        </div>
-      )}
+
+{/* ---------------- CLEAN SENTENCE OUTPUT ---------------- */}
+{predictedHR && (
+  <div className="w-full max-w-3xl mt-10 text-center">
+
+    {/* Heart Rate sentence */}
+    <p className="text-2xl text-gray-200 mb-6">
+      Your estimated heart rate is{" "}
+      <span className="text-white font-bold">{predictedHR} bpm</span>.
+    </p>
+
+    {/* HR Class sentence */}
+    <p className="text-xl text-gray-300 mb-3">
+      Your heart rate category is{" "}
+      <span className={`font-bold ${getColorClass(hrClass)}`}>
+        {hrClass}
+      </span>.
+    </p>
+
+    {/* RR Class sentence */}
+    <p className="text-xl text-gray-300 mb-3">
+      Your breathing rate is classified as{" "}
+      <span className={`font-bold ${getColorClass(rrClass)}`}>
+        {rrClass}
+      </span>.
+    </p>
+  </div>
+)}
+
+
       {/* Popup */}
       <ErrorPopup
         message={popupMessage}
