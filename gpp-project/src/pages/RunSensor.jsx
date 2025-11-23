@@ -138,7 +138,7 @@ const getColorClass = (label) => {
 
       // Run pipeline
       setPopupTitle("Processing...");
-      setPopupMessage("Cleaning...\nCalibrating...\nExtracting features...\nRunning ML model...");
+      setPopupMessage("Cleaning...\nCalibrating...\nExtracting Features...\nAnalysing Data...");
 
       const pipeRes = await fetch("http://localhost:5002/run_pipeline", { method: "POST" });
       const pipeData = await pipeRes.json();
@@ -153,7 +153,7 @@ const getColorClass = (label) => {
         setStressClass(r.Stress_Class);
 
         setPopupTitle("Success!");
-        setPopupMessage("Uploaded & Processed Successfully!\nML results displayed below.");
+        setPopupMessage("Uploaded & Processed Successfully!\nFinal results displayed below.");
 
       } else {
         setPopupTitle("Pipeline Error");

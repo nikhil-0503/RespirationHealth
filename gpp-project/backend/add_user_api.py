@@ -8,7 +8,7 @@ CORS(app)
 
 CSV_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "users.csv")
 
-# Create file if not exists
+# Ensure CSV exists
 if not os.path.exists(CSV_FILE):
     with open(CSV_FILE, "w", newline="") as f:
         writer = csv.writer(f)
@@ -17,19 +17,26 @@ if not os.path.exists(CSV_FILE):
 
 @app.route("/add-user", methods=["POST"])
 def add_user():
-    data = request.json
+    data = request.get_json()
+
+    if not data:
+        return jsonify({"success": False, "message": "Invalid request format"}), 400
+
     email = data.get("email")
     password = data.get("password")
 
-    # Check duplicates
+    if not email or not password:
+        return jsonify({"success": False, "message": "Missing email or password"}), 400
+
+    # Check duplicates safely
     with open(CSV_FILE, "r") as f:
         reader = csv.reader(f)
         next(reader, None)
         for row in reader:
-            if row[0] == email:
+            if len(row) >= 1 and row[0].strip() == email.strip():
                 return jsonify({"success": False, "message": "Email already exists."})
 
-    # Append
+    # Append new user
     with open(CSV_FILE, "a", newline="") as f:
         writer = csv.writer(f)
         writer.writerow([email, password])

@@ -198,6 +198,9 @@ export default function Statistics() {
   const [scatterHRvsRR, setScatterHRvsRR] = useState(null);
   const [scatterHRvsRange, setScatterHRvsRange] = useState(null);
   const [scatterFinalVsClean, setScatterFinalVsClean] = useState(null);
+  const [hypothesisResults, setHypothesisResults] = useState(null);
+
+
 
   useEffect(() => {
     // load everything
@@ -205,6 +208,8 @@ export default function Statistics() {
     fetchOverview();
     fetchMergedCorrelation();
     fetchAnomalies();
+    fetchHypothesisTests();
+
 
     // histograms and boxplots (backend chooses sample vs run)
     fetchHistogram("Heart_clean", setHistHeart);
@@ -321,6 +326,26 @@ async function fetchAnomalies() {
     }
     setter(json);
   }
+
+async function fetchHypothesisTests() {
+  try {
+    const res = await fetch(`${EDA_BACKEND_BASE}/eda/hypothesis_tests`);
+    const json = await res.json();
+
+    // If error, store null
+    if (json.error) {
+      console.error("Hypothesis test error:", json.error);
+      setHypothesisResults(null);
+      return;
+    }
+
+    setHypothesisResults(json);  // Store the hypothesis results
+  } catch (err) {
+    console.error("Failed to fetch hypothesis tests:", err);
+    setHypothesisResults(null);
+  }
+}
+
 
   // ===== Prepare charts from run-level rows =====
   function prepareCharts(data) {
@@ -862,6 +887,95 @@ async function fetchAnomalies() {
           </p>
         </div>
       </div>
+      {/* Hypothesis Testing Results */}
+<div className="w-full max-w-7xl mt-12">
+  <h2 className="text-3xl font-bold mb-6 text-white">Hypothesis Testing Results</h2>
+
+  {!hypothesisResults ? (
+    <div className="bg-[#0f0f0f] border border-gray-700 rounded-xl p-6 shadow-lg">
+      <p className="text-gray-400 text-center">No hypothesis data available.</p>
+    </div>
+  ) : (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+      {/* Calibration Shift Test */}
+      <div className="bg-[#0f0f0f] border border-gray-700 rounded-xl p-6 shadow-lg">
+        <h3 className="text-xl font-semibold text-blue-400 mb-4">
+          Calibration Shift Test
+        </h3>
+
+        <div className="space-y-2 text-gray-200 text-sm">
+          <p><strong className="text-gray-400">Interpretation:</strong><br /> 
+            {hypothesisResults.CalibrationShift.interpretation}
+          </p>
+
+          <p><strong className="text-gray-400">Mean Difference:</strong> 
+            {" "}{hypothesisResults.CalibrationShift.mean_difference.toFixed(3)}
+          </p>
+
+          <p><strong className="text-gray-400">Method:</strong> 
+            {" "}{hypothesisResults.CalibrationShift.method}
+          </p>
+
+          <p><strong className="text-gray-400">P-value:</strong> 
+            {" "}{hypothesisResults.CalibrationShift.p_value}
+          </p>
+        </div>
+      </div>
+
+      {/* HR vs SQI */}
+      <div className="bg-[#0f0f0f] border border-gray-700 rounded-xl p-6 shadow-lg">
+        <h3 className="text-xl font-semibold text-green-400 mb-4">
+          HR vs SQI Test
+        </h3>
+
+        <div className="space-y-2 text-gray-200 text-sm">
+          <p><strong className="text-gray-400">Interpretation:</strong><br />
+            {hypothesisResults.HR_vs_SQI.interpretation}
+          </p>
+
+          <p><strong className="text-gray-400">High SQI Mean:</strong> 
+            {" "}{hypothesisResults.HR_vs_SQI.mean_High_SQI.toFixed(3)}
+          </p>
+
+          <p><strong className="text-gray-400">Low SQI Mean:</strong>  
+            {" "}{hypothesisResults.HR_vs_SQI.mean_Low_SQI.toFixed(3)}
+          </p>
+
+          <p><strong className="text-gray-400">Method:</strong> 
+            {" "}{hypothesisResults.HR_vs_SQI.method}
+          </p>
+
+          <p><strong className="text-gray-400">P-value:</strong> 
+            {" "}{hypothesisResults.HR_vs_SQI.p_value}
+          </p>
+        </div>
+      </div>
+
+      {/* HR Class vs Stress Class */}
+      <div className="bg-[#0f0f0f] border border-gray-700 rounded-xl p-6 shadow-lg">
+        <h3 className="text-xl font-semibold text-red-400 mb-4">
+          HR Class vs Stress Class
+        </h3>
+
+        <div className="space-y-2 text-gray-200 text-sm">
+          <p><strong className="text-gray-400">Interpretation:</strong><br />
+            {hypothesisResults.Association_HR_Stress.interpretation}
+          </p>
+
+          <p><strong className="text-gray-400">P-value:</strong> 
+            {" "}{hypothesisResults.Association_HR_Stress.p_value}
+          </p>
+
+          <p><strong className="text-gray-400">Degrees of Freedom:</strong> 
+            {" "}{hypothesisResults.Association_HR_Stress.degrees_of_freedom}
+          </p>
+        </div>
+      </div>
+
+    </div>
+  )}
+</div>
 
 
       <div className="w-full max-w-7xl mt-8 mb-12 text-center text-gray-400">

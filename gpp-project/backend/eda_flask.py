@@ -5,6 +5,9 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 import logging
+import subprocess
+import json
+import os
 
 # -----------------------------
 # CONFIG — CSV INPUT FILES (adjust paths if needed)
@@ -256,7 +259,17 @@ def eda_overview():
 @app.route("/eda/runs")
 def eda_runs():
     final = fetch_finalstats_dataframe()
+
+    # Convert timestamp columns safely
+    for col in final.columns:
+        if ("time" in col.lower()) or ("date" in col.lower()) or ("timestamp" in col.lower()):
+            final[col] = final[col].astype(str)
+
+    # Also replace NaN with None so JSON can handle it
+    final = final.replace({pd.NA: None, np.nan: None})
+
     return jsonify(final.to_dict(orient="records"))
+
 
 @app.route("/eda/histogram")
 def eda_histogram():
@@ -383,6 +396,18 @@ def debug_columns():
         "cleaned_rows": len(c),
         "final_rows": len(f)
     })
+
+@app.route("/eda/hypothesis_tests")
+def hypothesis_tests():
+    try:
+        BASE_DIR = r"C:\Users\Nikhil\Downloads\SSN\College Files\Grand Project\RespirationHealth\gpp-project"
+        result = subprocess.check_output(
+            ["python", os.path.join(BASE_DIR, "data_analysis", "hypotheses_tests.py")],
+            text=True
+        )
+        return jsonify(json.loads(result))
+    except Exception as e:
+        return jsonify({"error": str(e)})
 
 # -----------------------------
 # START
