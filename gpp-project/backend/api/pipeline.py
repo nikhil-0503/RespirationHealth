@@ -1,10 +1,12 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS    # ✅ ADDED (Fixes React CORS error)
 import pandas as pd
 import subprocess
 import os
 import traceback
 
 app = Flask(__name__)
+CORS(app)                       # ✅ ADDED (Allows React → Flask requests)
 
 BASE_DIR = r"C:\Users\Nikhil\Downloads\SSN\College Files\Grand Project\RespirationHealth\gpp-project"
 
@@ -12,7 +14,6 @@ RAW_FILE = os.path.join(BASE_DIR, "backend", "vital_signs_new_data.csv")
 CLEAN_SCRIPT = os.path.join(BASE_DIR, "data_analysis", "cleaning_data.py")
 CALIB_SCRIPT = os.path.join(BASE_DIR, "data_analysis", "calibration.py")
 MODEL_SCRIPT = os.path.join(BASE_DIR, "data_analysis", "predict_with_model.py")
-
 
 # -----------------------------------------------------------
 # 1️⃣ UPLOAD CSV & APPEND TO vital_signs_new_data.csv
@@ -33,7 +34,6 @@ def upload_csv():
 
     except Exception as e:
         return jsonify({"error": str(e), "trace": traceback.format_exc()})
-
 
 # -----------------------------------------------------------
 # 2️⃣ RUN CLEANING → CALIBRATION → ML MODEL
@@ -62,7 +62,6 @@ def run_pipeline():
             "trace": traceback.format_exc()
         })
 
-
 # -----------------------------------------------------------
 # Simple health check
 # -----------------------------------------------------------
@@ -70,6 +69,5 @@ def run_pipeline():
 def home():
     return jsonify({"status": "Radar pipeline API running"})
 
-
 if __name__ == "__main__":
-    app.run(port=5002, debug=True)
+    app.run(port=5002, debug=True, use_reloader=False)

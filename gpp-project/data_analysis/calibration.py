@@ -30,11 +30,9 @@ df["Timestamp"] = (
     .str.strip()
 )
 
-# Remove invalid timestamp values
 INVALID_TS = ["", "nan", "None", "NaT", "null", "[]"]
 df = df[~df["Timestamp"].isin(INVALID_TS)]
 
-# Keep only valid dd-mm-yyyy timestamps
 df = df[df["Timestamp"].str.contains(r"\d{2}-\d{2}-\d{4}", regex=True, na=False)]
 
 if df.empty:
@@ -45,7 +43,6 @@ if df.empty:
 for col in ["Heart_clean", "Resp_clean", "Range_clean"]:
     df[col] = pd.to_numeric(df[col], errors="coerce")
 
-# Remove rows where all vital signs are missing
 df = df.dropna(subset=["Heart_clean", "Resp_clean", "Range_clean"], how="all")
 
 # -----------------------------------------------------
@@ -58,7 +55,6 @@ else:
     prev = pd.DataFrame()
     old_timestamps = set()
 
-# Filter only NEW timestamps
 new_df = df[~df["Timestamp"].isin(old_timestamps)].copy()
 
 if len(new_df) == 0:
@@ -68,7 +64,7 @@ if len(new_df) == 0:
 print(f"✔ New samples detected: {len(new_df)}")
 
 # -----------------------------------------------------
-# 5. REMOVE RUNS WITH < 5 SAMPLES (invalid runs)
+# 5. REMOVE RUNS WITH < 5 SAMPLES
 # -----------------------------------------------------
 new_df = new_df.groupby("Timestamp").filter(lambda g: len(g) >= 5)
 
@@ -90,7 +86,7 @@ run_stats = new_df.groupby("Timestamp").agg(
 ).reset_index()
 
 # -----------------------------------------------------
-# 7. EXTRA FEATURES (Safe)
+# 7. EXTRA FEATURES
 # -----------------------------------------------------
 extra = new_df.groupby("Timestamp").agg(
     HR_SD=("Heart_clean", "std"),
@@ -118,7 +114,6 @@ def compute_sqi(group):
 SQI = new_df.groupby("Timestamp").apply(compute_sqi).reset_index()
 SQI.columns = ["Timestamp", "SQI"]
 
-# Merge all
 run_stats = (
     run_stats.merge(extra, on="Timestamp")
              .merge(range_slopes, on="Timestamp")
@@ -137,10 +132,9 @@ run_stats["Avg_RR_clean"] = run_stats["Avg_RR_clean"].fillna(0.0)
 run_stats["Avg_Range"] = run_stats["Avg_Range"].fillna(0.0)
 
 # -----------------------------------------------------
-# 9. HR CALIBRATION (OFFSET)
+# 9. HR CALIBRATION — REMOVED, NOW ML MODEL DOES IT
 # -----------------------------------------------------
-OFFSET = 10.5
-run_stats["Final_Accurate_HR"] = run_stats["Avg_HR_clean"] + OFFSET
+run_stats["Final_Accurate_HR"] = 0.0   # placeholder, ML model will fill
 
 # -----------------------------------------------------
 # 10. ASSIGN RUN NUMBERS

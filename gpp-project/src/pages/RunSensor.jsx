@@ -38,10 +38,12 @@ function RunSensor() {
   const [popupMessage, setPopupMessage] = useState("");
   const [popupTitle, setPopupTitle] = useState("");
 
-  const [config, setConfig] = useState(null); // 0 = front, 1 = back
+  const [config, setConfig] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
 
-  // Load user email stored during login
+  // NEW: store ML predicted HR on screen
+  const [predictedHR, setPredictedHR] = useState(null);
+
   const userEmail = localStorage.getItem("loggedUser");
 
   const handleRunSensor = () => {
@@ -83,38 +85,69 @@ function RunSensor() {
   };
 
   // ---------------------------------------------------------
-  // NEW: Handle CSV Upload
+  // UPDATED: PIPELINE STATUS POPUP + SHOW HR ON PAGE
   // ---------------------------------------------------------
-  const handleUploadCsv = () => {
+  const handleUploadCsv = async () => {
     if (!selectedFile) {
       setPopupTitle("No File Selected");
       setPopupMessage("Please upload a CSV file first.");
       return;
     }
 
-    const formData = new FormData();
-    formData.append("file", selectedFile);
+    try {
+      // STEP 1: Upload raw CSV
+      setPopupTitle("Uploading...");
+      setPopupMessage("Uploading CSV file...");
+      
+      const formData = new FormData();
+      formData.append("file", selectedFile);
 
-    fetch("http://localhost:5002/upload-data", {
-      method: "POST",
-      body: formData
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success) {
-          setPopupTitle("Processing Complete");
-          setPopupMessage(
-            `Uploaded & Processed Successfully!\n\nPredicted Final HR: ${data.predicted_hr}`
-          );
-        } else {
-          setPopupTitle("Error Processing File");
-          setPopupMessage(data.error || "Pipeline execution failed.");
-        }
-      })
-      .catch(() => {
-        setPopupTitle("Server Error");
-        setPopupMessage("Backend not reachable. Please run Flask backend.");
+      const uploadRes = await fetch("http://localhost:5002/upload", {
+        method: "POST",
+        body: formData
       });
+
+      const uploadData = await uploadRes.json();
+
+      if (!uploadData.message) {
+        setPopupTitle("Upload Error");
+        setPopupMessage(uploadData.error || "Failed to upload CSV file.");
+        return;
+      }
+
+      // STEP 2: Cleaning message
+      setPopupTitle("Processing...");
+      setPopupMessage("Cleaning data...\nExtracting samples...");
+
+      // STEP 3: Run pipeline
+      setPopupMessage("Cleaning data...\nCalibrating...\nExtracting features...");
+
+      const pipeRes = await fetch("http://localhost:5002/run_pipeline", {
+        method: "POST"
+      });
+
+      // Running ML model
+      setPopupMessage("Cleaning data...\nCalibrating...\nExtracting features...\nRunning ML model...");
+
+      const pipeData = await pipeRes.json();
+
+      // STEP 4: FINISH + DISPLAY HR ON SCREEN
+      if (pipeData.model_output) {
+        setPredictedHR(pipeData.model_output);  // SHOW ON PAGE
+
+        setPopupTitle("Success!");
+        setPopupMessage(
+          "Uploaded & Processed Successfully!\nML model output is displayed on the page."
+        );
+      } else {
+        setPopupTitle("Pipeline Error");
+        setPopupMessage(pipeData.error || "Pipeline failed.");
+      }
+
+    } catch (error) {
+      setPopupTitle("Server Error");
+      setPopupMessage("Backend not reachable. Please run Flask backend.");
+    }
   };
 
   return (
@@ -129,6 +162,8 @@ function RunSensor() {
       <p className="text-lg md:text-xl max-w-20xl text-center mb-10">
         Use this page to initiate the UWB radar sensor and monitor live physiological signals instantly.
       </p>
+
+      
 
       {/* Configuration Section */}
       <div className="w-full max-w-xl bg-[#0f0f0f] border border-gray-700 rounded-xl p-6 mt-4 shadow-lg">
@@ -180,7 +215,7 @@ function RunSensor() {
         Run the Sensor
       </button>
 
-      {/* NEW: Upload CSV Section */}
+      {/* Upload CSV */}
       <div className="w-full max-w-xl bg-[#0f0f0f] border border-gray-700 rounded-xl p-6 mt-10 shadow-lg">
         <label className="block text-lg font-semibold mb-4 text-center">
           Upload Radar Data (CSV)
@@ -200,7 +235,13 @@ function RunSensor() {
           Upload & Process File
         </button>
       </div>
-
+      {/* NEW: DISPLAY ML RESULT */}
+      {predictedHR && (
+        <div className="w-full max-w-xl bg-[#0f0f0f] border border-green-600 rounded-xl p-6 mt-4 shadow-lg text-center">
+          <h3 className="text-2xl font-bold text-green-400 mb-2">Predicted Heart Rate</h3>
+          <p className="text-4xl font-extrabold text-white">{predictedHR}</p>
+        </div>
+      )}
       {/* Popup */}
       <ErrorPopup
         message={popupMessage}
