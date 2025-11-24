@@ -408,6 +408,84 @@ def hypothesis_tests():
         return jsonify(json.loads(result))
     except Exception as e:
         return jsonify({"error": str(e)})
+    
+@app.route("/eda/hypothesis/calibration_data")
+def calibration_data():
+    df = fetch_finalstats_dataframe()
+    if df.empty:
+        return jsonify({
+            "clean": [],
+            "final": [],
+            "error": "df empty"
+        })
+
+    # Ensure required columns exist
+    if "Avg_HR_clean" not in df.columns or "Final_Accurate_HR" not in df.columns:
+        return jsonify({
+            "clean": [],
+            "final": [],
+            "error": "Required columns missing",
+            "available_columns": df.columns.tolist()
+        })
+
+    clean = df["Avg_HR_clean"].replace({np.nan: None}).tolist()
+    final = df["Final_Accurate_HR"].replace({np.nan: None}).tolist()
+
+    return jsonify({
+        "clean": clean,
+        "final": final
+    })
+
+@app.route("/eda/hypothesis/hr_sqi_groups")
+def hr_sqi_groups():
+    df = fetch_finalstats_dataframe()
+    if df.empty:
+        return jsonify({
+            "high": [],
+            "low": [],
+            "error": "df empty"
+        })
+
+    if "SQI" not in df.columns or "Avg_HR_clean" not in df.columns:
+        return jsonify({
+            "high": [],
+            "low": [],
+            "error": "Required columns missing",
+            "available_columns": df.columns.tolist()
+        })
+
+    high = df[df["SQI"] >= 200]["Avg_HR_clean"].replace({np.nan: None}).tolist()
+    low  = df[df["SQI"] < 200]["Avg_HR_clean"].replace({np.nan: None}).tolist()
+
+    return jsonify({
+        "high": high,
+        "low": low
+    })
+
+
+@app.route("/eda/hypothesis/hr_stress_matrix")
+def hr_stress_matrix():
+    df = fetch_finalstats_dataframe()
+    if df.empty:
+        return jsonify({"labels": [], "matrix": []})
+
+    # Create classes if not available
+    if "HR_Class" not in df.columns:
+        df["HR_Class"] = df["Avg_HR_clean"].apply(
+            lambda x: "Low" if x < 70 else ("Normal" if x <= 90 else "High")
+        )
+    if "Stress_Class" not in df.columns:
+        df["Stress_Class"] = df["Range_SD"].apply(
+            lambda x: "Low" if x < 0.02 else ("Medium" if x < 0.05 else "High")
+        )
+
+    pivot = pd.crosstab(df["HR_Class"], df["Stress_Class"])
+
+    return jsonify({
+        "labels": pivot.columns.tolist(),
+        "index": pivot.index.tolist(),
+        "matrix": pivot.values.tolist()
+    })
 
 # -----------------------------
 # START

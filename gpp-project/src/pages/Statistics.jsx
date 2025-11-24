@@ -199,6 +199,9 @@ export default function Statistics() {
   const [scatterHRvsRange, setScatterHRvsRange] = useState(null);
   const [scatterFinalVsClean, setScatterFinalVsClean] = useState(null);
   const [hypothesisResults, setHypothesisResults] = useState(null);
+  const [calibrationData, setCalibrationData] = useState(null);
+const [hrSQIGroups, setHRSQIGroups] = useState(null);
+const [hrStressMatrix, setHRStressMatrix] = useState(null);
 
 
 
@@ -219,11 +222,28 @@ export default function Statistics() {
     fetchBoxplot("Heart_clean", setBoxHeart);
     fetchBoxplot("Resp_clean", setBoxResp);
     fetchBoxplot("Range_clean", setBoxRangeSD);
+    fetchCalibrationData();
+fetchHRSQIGroups();
+fetchHRStressMatrix();
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ===== Fetch helpers with graceful handling =====
+  async function fetchCalibrationData() {
+  const res = await fetch(`${EDA_BACKEND_BASE}/eda/hypothesis/calibration_data`);
+  setCalibrationData(await res.json());
+}
+
+async function fetchHRSQIGroups() {
+  const res = await fetch(`${EDA_BACKEND_BASE}/eda/hypothesis/hr_sqi_groups`);
+  setHRSQIGroups(await res.json());
+}
+
+async function fetchHRStressMatrix() {
+  const res = await fetch(`${EDA_BACKEND_BASE}/eda/hypothesis/hr_stress_matrix`);
+  setHRStressMatrix(await res.json());
+}
   async function safeFetchJson(url) {
     try {
       const res = await fetch(url);
@@ -975,6 +995,145 @@ async function fetchHypothesisTests() {
 
     </div>
   )}
+</div>
+{/* Hypothesis Visualizations */}
+<div className="w-full max-w-7xl mt-12 space-y-12">
+
+  {/* ============ FIRST ROW (2 GRAPHS SIDE BY SIDE) ============ */}
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+
+    {/* Clean vs Final HR Scatter */}
+    <div className="bg-[#0f0f0f] p-6 rounded-xl border border-gray-700">
+      <h3 className="text-lg mb-3 text-gray-200">Clean HR vs Final HR</h3>
+
+      <div className="h-[230px]">
+        {calibrationData && calibrationData.clean?.length > 0 ? (
+          <Scatter
+            data={{
+              datasets: [{
+                label: "Runs",
+                data: calibrationData.clean.map((v, i) => ({ x: v, y: calibrationData.final[i] })),
+                backgroundColor: "#60A5FA",
+                pointRadius: 3,
+              }],
+            }}
+            options={{
+              ...chartOptions,
+              maintainAspectRatio: false
+            }}
+          />
+        ) : (
+          <div className="text-gray-400">No data</div>
+        )}
+      </div>
+    </div>
+
+    {/* Difference Bar */}
+    <div className="bg-[#0f0f0f] p-6 rounded-xl border border-gray-700">
+      <h3 className="text-lg mb-3 text-gray-200">Calibration Difference (Final – Clean)</h3>
+
+      <div className="h-[230px]">
+        {calibrationData && calibrationData.clean?.length > 0 ? (
+          <Bar
+            data={{
+              labels: calibrationData.clean.map((_, i) => `Run ${i + 1}`),
+              datasets: [{
+                label: "Shift",
+                data: calibrationData.clean.map((v, i) => calibrationData.final[i] - v),
+                backgroundColor: "#FBBF24",
+              }],
+            }}
+            options={{
+              ...chartOptions,
+              maintainAspectRatio: false
+            }}
+          />
+        ) : (
+          <div className="text-gray-400">No data</div>
+        )}
+      </div>
+    </div>
+
+  </div>
+
+  {/* ============ SECOND ROW (HR vs SQI) ============ */}
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+
+    {/* HR Distribution for High vs Low SQI */}
+    <div className="bg-[#0f0f0f] p-6 rounded-xl border border-gray-700">
+      <h3 className="text-lg mb-3 text-gray-200">HR Distribution (High SQI vs Low SQI)</h3>
+
+      <div className="h-[230px]">
+        {hrSQIGroups ? (
+          <Bar
+            data={{
+              labels: ["High SQI", "Low SQI"],
+              datasets: [{
+                label: "Mean HR",
+                data: [
+                  computeStats(hrSQIGroups.high).mean,
+                  computeStats(hrSQIGroups.low).mean
+                ],
+                backgroundColor: ["#10B981", "#EF4444"],
+              }],
+            }}
+            options={{
+              ...chartOptions,
+              maintainAspectRatio: false
+            }}
+          />
+        ) : (
+          <div className="text-gray-400">No data</div>
+        )}
+      </div>
+    </div>
+
+    {/* Heatmap for HR Class vs Stress Class */}
+    <div className="bg-[#0f0f0f] p-6 rounded-xl border border-gray-700">
+      <h3 className="text-lg mb-3 text-gray-200">HR Class vs Stress Class Heatmap</h3>
+
+      <div className="overflow-auto max-h-[230px]">
+        {hrStressMatrix ? (
+          <table className="border-collapse text-sm w-full">
+            <thead>
+              <tr>
+                <th className="text-gray-300 p-2"></th>
+                {hrStressMatrix.labels.map((c) => (
+                  <th key={c} className="text-gray-300 p-2">{c}</th>
+                ))}
+              </tr>
+            </thead>
+
+            <tbody>
+              {hrStressMatrix.index.map((row, i) => (
+                <tr key={row}>
+                  <td className="text-gray-200 p-2 font-medium">{row}</td>
+
+                  {hrStressMatrix.matrix[i].map((val, j) => {
+                    const intensity = Math.min(1, val / Math.max(...hrStressMatrix.matrix.flat()));
+                    const color = `rgba(${255 - intensity * 255}, ${50 + intensity * 150}, ${50}, 0.85)`;
+
+                    return (
+                      <td key={j}
+                          className="p-2 text-center text-white font-semibold"
+                          style={{ backgroundColor: color }}>
+                        {val}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <div className="text-gray-400">No data</div>
+        )}
+      </div>
+
+    </div>
+
+  </div>
+
 </div>
 
 
