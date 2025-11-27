@@ -7,7 +7,7 @@ import os
 # PATHS
 # ==========================================================
 RAW_FILE = r"C:\Users\Nikhil\Downloads\SSN\College Files\Grand Project\RespirationHealth\gpp-project\backend\vital_signs_new_data.csv"
-CLEAN_FILE = r"C:\Users\Nikhil\Downloads\SSN\College Files\Grand Project\RespirationHealth\gpp-project\data_analysis\cleaned_vital_signs.csv"
+CLEAN_FILE = r"C:\Users\Nikhil\Downloads\SSN\College Files\Grand Project\RespirationHealth\gpp-project\data_analysis\cleaned_vital_signs_new.csv"
 
 # ==========================================================
 # 1. LOAD RAW DATA

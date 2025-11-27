@@ -11,9 +11,18 @@ function ErrorPopup({ message, onClose, title = "Message" }) {
           {title}
         </h2>
 
-        <p className="mb-6 text-center leading-relaxed whitespace-pre-wrap">
+        <p 
+          className="mb-6 leading-relaxed whitespace-pre-wrap text-gray-200"
+          style={{
+            maxHeight: "300px",
+            overflowY: "auto",
+            textAlign: "left",
+            wordBreak: "break-word"
+          }}
+        >
           {message}
         </p>
+
 
         <div className="flex justify-center">
           <button
@@ -49,42 +58,44 @@ function RunSensor() {
 
   const userEmail = localStorage.getItem("loggedUser");
 
-  const handleRunSensor = () => {
-    if (!userEmail) {
-      setPopupTitle("Login Required");
-      setPopupMessage("Please log in again. User email not found.");
-      return;
-    }
+const handleRunSensor = () => {
+  if (!userEmail) {
+    setPopupTitle("Login Required");
+    setPopupMessage("Please log in again. User email not found.");
+    return;
+  }
 
-    if (config === null) {
-      setPopupTitle("Configuration Missing");
-      setPopupMessage("Please select Front or Back configuration before running the sensor.");
-      return;
-    }
+  if (config === null) {
+    setPopupTitle("Configuration Missing");
+    setPopupMessage("Please select Front or Back configuration before running the sensor.");
+    return;
+  }
 
-    fetch("http://localhost:5002/run-sensor", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        userEmail: userEmail,
-        configuration: config
-      })
+  fetch("http://localhost:5002/run-sensor", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      userEmail: userEmail,
+      configuration: config
     })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success) {
-          setPopupTitle("Success!");
-          setPopupMessage("Sensor started successfully!");
-        } else {
-          setPopupTitle("Sensor Error!");
-          setPopupMessage("Sensor is not connected to the device. Kindly set it up and try again.");
-        }
-      })
-      .catch(() => {
-        setPopupTitle("Connection Error!");
-        setPopupMessage("Cannot connect to backend. Run the backend server and try again.");
-      });
-  };
+  })
+    .then((res) => res.json())
+    .then((data) => {
+      if (data.success) {
+        setPopupTitle("Vital Signs Summary");
+setPopupMessage(data.stats_text);  // pure raw block
+
+      } else {
+        setPopupTitle("Sensor Error!");
+        setPopupMessage(data.error || "Unknown error occurred while running sensor.");
+      }
+    })
+    .catch((err) => {
+      setPopupTitle("Connection Error!");
+      setPopupMessage("Cannot connect to backend. Run the backend server and try again.");
+    });
+};
+
 
   // COLOR FUNCTION ------------------------
 const getColorClass = (label) => {
@@ -183,7 +194,7 @@ const getColorClass = (label) => {
       {/* Configuration Section */}
       <div className="w-full max-w-xl bg-[#0f0f0f] border border-gray-700 rounded-xl p-6 mt-4 shadow-lg">
         <label className="block text-lg font-semibold mb-4 text-center">
-          Choose the File Configuration
+          Choose the Person Configuration
         </label>
 
         <div className="flex flex-col gap-4">
@@ -226,7 +237,7 @@ const getColorClass = (label) => {
       >
         Run the Sensor
       </button>
-
+              <div><label><br></br>(Or)</label></div>
       {/* Upload CSV */}
       <div className="w-full max-w-xl bg-[#0f0f0f] border border-gray-700 rounded-xl p-6 mt-10 shadow-lg">
         <label className="block text-lg font-semibold mb-4 text-center">

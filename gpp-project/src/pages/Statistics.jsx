@@ -835,24 +835,19 @@ async function fetchHypothesisTests() {
         <h2 className="text-2xl font-semibold mb-4">Relationship Analysis (Scatter plots)</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-[#0b0b0b] border border-gray-700 rounded-xl p-4 shadow-md">
-            <h4 className="text-md text-gray-100 font-semibold mb-2">Avg HR vs Avg RR (per run)</h4>
+            <h4 className="text-md text-gray-100 font-semibold mb-2">Avg RR vs Avg HR (per run)</h4>
             {scatterHRvsRR ? <Scatter data={scatterHRvsRR} options={chartOptions} /> : <div className="text-gray-400">No data</div>}
           </div>
 
           <div className="bg-[#0b0b0b] border border-gray-700 rounded-xl p-4 shadow-md">
-            <h4 className="text-md text-gray-100 font-semibold mb-2">Avg HR vs Avg Range (per run)</h4>
+            <h4 className="text-md text-gray-100 font-semibold mb-2">Avg Range vs Avg HR (per run)</h4>
             {scatterHRvsRange ? <Scatter data={scatterHRvsRange} options={chartOptions} /> : <div className="text-gray-400">No data</div>}
           </div>
 
           <div className="bg-[#0b0b0b] border border-gray-700 rounded-xl p-4 shadow-md">
-            <h4 className="text-md text-gray-100 font-semibold mb-2">Final Accurate HR vs Avg Clean HR (calibration)</h4>
+            <h4 className="text-md text-gray-100 font-semibold mb-2">Avg Clean HR vs Final Accurate HR (calibration)</h4>
             {scatterFinalVsClean ? <Scatter data={scatterFinalVsClean} options={chartOptions} /> : <div className="text-gray-400">No data</div>}
             <p className="text-xs text-gray-400 mt-2">This shows how calibration shifted the sensor HR toward the final accurate values.</p>
-          </div>
-
-          <div className="bg-[#0b0b0b] border border-gray-700 rounded-xl p-4 shadow-md">
-            <h4 className="text-md text-gray-100 font-semibold mb-2">Avg HR vs SQI (per run)</h4>
-            {scatterHRvsSQI ? <Scatter data={scatterHRvsSQI} options={chartOptions} /> : <div className="text-gray-400">No data</div>}
           </div>
         </div>
       </div>
@@ -862,7 +857,13 @@ async function fetchHypothesisTests() {
         <h2 className="text-2xl font-semibold mb-4">Boxplots & Outliers</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Boxplot stats={boxHeart} title="Heart Rate (samples) — boxplot" />
-          <Boxplot stats={boxResp} title="Respiration Rate (samples) — boxplot" />
+          <Boxplot 
+            stats={{ 
+              ...boxResp, 
+              outliers: []   // <--- remove outliers
+            }} 
+            title="Respiration Rate (samples) — boxplot" 
+          />
           <Boxplot stats={boxRangeSD} title="Range SD (runs) — boxplot" />
         </div>
       </div>

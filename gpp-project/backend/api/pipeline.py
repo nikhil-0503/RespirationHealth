@@ -2,25 +2,52 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import pandas as pd
 import subprocess
+import sys
+import io
+import csv
 import os
 import traceback
 import json
 
+# Fix UTF-8 for printing
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+
 app = Flask(__name__)
 CORS(app)
 
+# ------------------------------------------------------------
+# PATHS
+# ------------------------------------------------------------
 BASE_DIR = r"C:\Users\Nikhil\Downloads\SSN\College Files\Grand Project\RespirationHealth\gpp-project"
 
-RAW_FILE = os.path.join(BASE_DIR, "backend", "vital_signs_new_data.csv")
+MASTER_FILE = os.path.join(BASE_DIR, "backend", "vital_signs_new_data.csv")
+USERS_FILE = os.path.join(BASE_DIR, "backend", "users.csv")
+
 CLEAN_SCRIPT = os.path.join(BASE_DIR, "data_analysis", "cleaning_data.py")
 CALIB_SCRIPT = os.path.join(BASE_DIR, "data_analysis", "calibration.py")
 MODEL_SCRIPT = os.path.join(BASE_DIR, "data_analysis", "predict_with_model.py")
 
 
-# ------------------------------------------------------------------
+# ------------------------------------------------------------
+# USER CHECK
+# ------------------------------------------------------------
+def user_exists(email):
+    if not os.path.exists(USERS_FILE):
+        return False
+
+    with open(USERS_FILE, "r") as f:
+        reader = csv.reader(f)
+        next(reader, None)
+        for row in reader:
+            if row and row[0].strip().lower() == email.lower():
+                return True
+    return False
+
+
+# ------------------------------------------------------------
 # 1️⃣ UPLOAD CSV
-# ------------------------------------------------------------------
-@app.route("/upload", methods=["POST"])
+# ------------------------------------------------------------
+@app.post("/upload")
 def upload_csv():
     try:
         file = request.files.get("file")
@@ -28,7 +55,7 @@ def upload_csv():
             return jsonify({"error": "No file uploaded"}), 400
 
         df = pd.read_csv(file)
-        df.to_csv(RAW_FILE, mode="a", header=False, index=False)
+        df.to_csv(MASTER_FILE, mode="a", header=False, index=False)
 
         return jsonify({"message": "File received and appended!"})
 
@@ -36,40 +63,112 @@ def upload_csv():
         return jsonify({"error": str(e), "trace": traceback.format_exc()})
 
 
-# ------------------------------------------------------------------
-# 2️⃣ RUN FULL PIPELINE (clean → calibrate → model)
-# ------------------------------------------------------------------
-@app.route("/run_pipeline", methods=["POST"])
-def run_pipeline():
+# ------------------------------------------------------------
+# 2️⃣ RUN SENSOR → SAVE DATA → RUN PIPELINE
+# ------------------------------------------------------------
+@app.post("/run-sensor")
+def run_sensor():
     try:
-        # Step 1: Cleaning
-        subprocess.run(["python", CLEAN_SCRIPT], check=True)
+        data = request.get_json()
+        user_email = data.get("userEmail")
+        config_number = data.get("configuration")
 
-        # Step 2: Calibration & feature extraction
-        subprocess.run(["python", CALIB_SCRIPT], check=True)
+        if not user_email or config_number is None:
+            return jsonify({
+                "success": False,
+                "error": "Missing userEmail or configuration"
+            })
 
-        # Step 3: ML model inference (returns Python dict printed as text)
-        raw_output = subprocess.check_output(["python", MODEL_SCRIPT], text=True).strip()
+        if not user_exists(user_email):
+            return jsonify({
+                "success": False,
+                "error": "User does not exist. Please sign up first."
+            })
 
-        # Clean and parse safely
-        ml_output = None
+        VITALSIGNS_SCRIPT = os.path.join(BASE_DIR, "backend", "vitalsigns.py")
 
-        # Try parsing clean JSON (if printed already in JSON form)
+        print("\nRunning:", VITALSIGNS_SCRIPT)
+
+        # Run sensor script
+        process = subprocess.Popen(
+            [sys.executable, VITALSIGNS_SCRIPT, user_email, str(config_number)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+
+        stdout, stderr = process.communicate()
+
+        print("\n=== SENSOR STDOUT ===")
+        print(stdout)
+        print("\n=== SENSOR STDERR ===")
+        print(stderr)
+
+        if process.returncode != 0:
+            return jsonify({
+                "success": False,
+                "error": stderr or stdout
+            })
+
+        # ----------------------------------------------------
+        # Extract stats block from vitalsigns.py output
+        # ----------------------------------------------------
+        stats_text = "No stats returned."
+        collecting = False
+        json_buffer = ""
+
+        for line in stdout.splitlines():
+            if "STATS_BEGIN" in line:
+                collecting = True
+                continue
+            if "STATS_END" in line:
+                break
+            if collecting:
+                json_buffer += line
+
         try:
-            ml_output = json.loads(raw_output)
+            stats_text = json.loads(json_buffer).get("stats_text", "No stats found.")
         except:
             pass
 
-        # Try parsing Python dict style
-        if ml_output is None:
-            try:
-                safe = raw_output.replace("'", '"')
-                ml_output = json.loads(safe)
-            except:
-                pass
+        # ----------------------------------------------------
+        # Run pipeline (clean → calibrate → predict)
+        # ----------------------------------------------------
+        subprocess.run(["python", CLEAN_SCRIPT], check=True)
+        subprocess.run(["python", CALIB_SCRIPT], check=True)
 
-        # Final fallback → send raw output
-        if ml_output is None:
+        raw_output = subprocess.check_output(["python", MODEL_SCRIPT], text=True).strip()
+
+        try:
+            ml_results = json.loads(raw_output)
+        except:
+            ml_results = {"raw": raw_output}
+
+        return jsonify({
+            "success": True,
+            "sensor_output": stdout,
+            "stats_text": stats_text,   # <---- HERE!
+            "ml_results": ml_results
+        })
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
+
+# ------------------------------------------------------------
+# 3️⃣ MANUAL PIPELINE RUN (upload flow)
+# ------------------------------------------------------------
+@app.post("/run_pipeline")
+def run_pipeline():
+    try:
+        subprocess.run(["python", CLEAN_SCRIPT], check=True)
+        subprocess.run(["python", CALIB_SCRIPT], check=True)
+
+        raw_output = subprocess.check_output(["python", MODEL_SCRIPT], text=True).strip()
+
+        try:
+            ml_output = json.loads(raw_output)
+        except:
             ml_output = {"raw_output": raw_output}
 
         return jsonify({
@@ -85,16 +184,18 @@ def run_pipeline():
         })
 
 
-# ------------------------------------------------------------------
-# 3️⃣ HEALTH CHECK
-# ------------------------------------------------------------------
-@app.route("/", methods=["GET"])
+# ------------------------------------------------------------
+# HEALTH CHECK
+# ------------------------------------------------------------
+@app.get("/")
 def home():
     return jsonify({"status": "Radar pipeline API running"})
 
 
-# ------------------------------------------------------------------
+# ------------------------------------------------------------
 # START SERVER
-# ------------------------------------------------------------------
+# ------------------------------------------------------------
 if __name__ == "__main__":
+    print("📌 Using master file:", MASTER_FILE)
+    print("📌 Users file:", USERS_FILE)
     app.run(port=5002, debug=True, use_reloader=False)
