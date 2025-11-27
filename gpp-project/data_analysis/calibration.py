@@ -1,193 +1,214 @@
-# calibration.py (updated)
 import pandas as pd
 import numpy as np
 import os
+import json
 
-# -----------------------
-# PATHS - adjust if needed
-# -----------------------
-CLEAN_FILE = r"C:\Users\Nikhil\Downloads\SSN\College Files\Grand Project\RespirationHealth\gpp-project\data_analysis\cleaned_vital_signs.csv"
-OUTPUT_DIR = r"C:\Users\Nikhil\Downloads\SSN\College Files\Grand Project\RespirationHealth\gpp-project\data_analysis"
-FINAL_STATS_FILE = os.path.join(OUTPUT_DIR, "final_run_stats.csv")
+# ==========================================================
+# PATHS
+# ==========================================================
+CLEAN_FILE = r"C:\Users\Nikhil\Downloads\SSN\College Files\Grand Project\RespirationHealth\gpp-project\data_analysis\cleaned_vital_signs_new.csv"
+COMPARISON_FILE = r"C:\Users\Nikhil\Downloads\SSN\College Files\Grand Project\RespirationHealth\gpp-project\data_analysis\VariousData.csv"
+OFFSET_FILE = r"C:\Users\Nikhil\Downloads\SSN\College Files\Grand Project\RespirationHealth\gpp-project\data_analysis\calibration_offsets.json"
+FINAL_STATS_FILE = r"C:\Users\Nikhil\Downloads\SSN\College Files\Grand Project\RespirationHealth\gpp-project\data_analysis\final_run_stats_new.csv"
 
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(os.path.dirname(FINAL_STATS_FILE), exist_ok=True)
 
-# -----------------------
-# LOAD CLEANED SAMPLE DATA
-# -----------------------
+# ==========================================================
+# 1. LOAD CLEANED SENSOR DATA
+# ==========================================================
 if not os.path.exists(CLEAN_FILE):
-    print("❌ cleaned_vital_signs.csv not found!")
-    exit(1)
+    print("❌ cleaned_vital_signs_new.csv not found.")
+    exit()
 
 df = pd.read_csv(CLEAN_FILE)
 df["Timestamp"] = df["Timestamp"].astype(str).str.strip()
 
+# Sort to maintain true order
+df = df.sort_values(by=["Timestamp", "SessionTime"]).reset_index(drop=True)
+
+# Remove invalid timestamps
 INVALID_TS = ["", "nan", "None", "NaT", "null", "[]"]
 df = df[~df["Timestamp"].isin(INVALID_TS)]
-df = df[df["Timestamp"].str.contains(r"\d{2}-\d{2}-\d{4}", regex=True, na=False)]
 
 if df.empty:
-    print("❌ No valid timestamps in cleaned_vital_signs.csv")
-    exit(0)
+    print("❌ No usable cleaned rows.")
+    exit()
 
-# numeric coercions for essential columns
-for col in ["Heart_clean", "Resp_clean", "Range_clean"]:
-    if col in df.columns:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
+# ==========================================================
+# 2. LEARN OR LOAD CONFIG-BASED HR OFFSETS
+# ==========================================================
+def learn_offsets():
+    print("📘 Learning HR offsets by configuration...")
 
-# drop rows where all vitals missing
-df = df.dropna(subset=["Heart_clean", "Resp_clean", "Range_clean"], how="all")
+    comp = pd.read_csv(COMPARISON_FILE)
 
-# -----------------------
-# LOAD EXISTING FINAL_RUN_STATS TO DETECT NEW RUNS
-# -----------------------
+    comp = comp.rename(columns={
+        "Average Heart Rate": "Sensor_HR",
+        "Unnamed: 2": "Smartwatch_HR",
+        "Unnamed: 3": "Finger_HR",
+        "Configuration": "Config",
+        "ConfigurationFile": "Config"   # support both column names
+    })
+
+    # Force numeric conversion
+    numeric_cols = ["Sensor_HR", "Smartwatch_HR", "Finger_HR", "Config"]
+    for col in numeric_cols:
+        comp[col] = pd.to_numeric(comp[col], errors="coerce")
+
+    # Drop invalid rows
+    comp = comp.dropna(subset=["Sensor_HR", "Smartwatch_HR", "Finger_HR", "Config"])
+
+    if comp.empty:
+        print("❌ No valid calibration rows! Using default offsets.")
+        return {"offset_0": 10.5, "offset_1": 10.5}
+
+    # Compute real HR
+    comp["Real_HR"] = (comp["Smartwatch_HR"] + comp["Finger_HR"]) / 2
+    comp["Offset"] = comp["Real_HR"] - comp["Sensor_HR"]
+
+    # Two configurations
+    offset_0 = comp[comp["Config"] == 0]["Offset"].mean()
+    offset_1 = comp[comp["Config"] == 1]["Offset"].mean()
+
+    offsets = {
+        "offset_0": float(offset_0) if not np.isnan(offset_0) else 10.5,
+        "offset_1": float(offset_1) if not np.isnan(offset_1) else 10.5
+    }
+
+    with open(OFFSET_FILE, "w") as f:
+        json.dump(offsets, f, indent=2)
+
+    print("✔ Saved calibration:", offsets)
+    return offsets
+# ==========================================================
+# 2B. LOAD OR LEARN OFFSETS
+# ==========================================================
+if os.path.exists(OFFSET_FILE):
+    offsets = json.load(open(OFFSET_FILE))
+    print("✔ Loaded calibration offsets:", offsets)
+
+elif os.path.exists(COMPARISON_FILE):
+    offsets = learn_offsets()
+
+else:
+    print("⚠ No calibration available. Using default 10.5 for both configs.")
+    offsets = {"offset_0": 10.5, "offset_1": 10.5}
+
+# ==========================================================
+# 3. LOAD EXISTING final_run_stats_new TO CONTINUE RUN NUMBERS
+# ==========================================================
 if os.path.exists(FINAL_STATS_FILE):
     prev = pd.read_csv(FINAL_STATS_FILE)
-    # treat prev Timestamp as string for comparison
-    old_timestamps = set(prev["Timestamp"].astype(str))
+    last_run = int(prev["Run"].max()) if "Run" in prev.columns else 0
 else:
     prev = pd.DataFrame()
-    old_timestamps = set()
+    last_run = 0
+    print("ℹ Starting fresh final_run_stats_new.csv")
 
-# pick only new rows
-new_df = df[~df["Timestamp"].astype(str).isin(old_timestamps)].copy()
+# ==========================================================
+# 4. DETECT RUNS USING SessionTime RESET
+# ==========================================================
+df["Run"] = 0
+run_num = last_run + 1
 
-if len(new_df) == 0:
-    print("✔ No new runs detected.")
-    exit(0)
+df.loc[0, "Run"] = run_num
 
-print(f"✔ New samples detected: {len(new_df)}")
+for i in range(1, len(df)):
+    if df.loc[i, "SessionTime"] < df.loc[i - 1, "SessionTime"]:
+        run_num += 1
+    df.loc[i, "Run"] = run_num
 
-# -----------------------
-# FILTER RUNS WITH < 5 SAMPLES
-# -----------------------
-new_df = new_df.groupby("Timestamp").filter(lambda g: len(g) >= 5)
+# ==========================================================
+# 5. FILTER RUNS WITH < 5 SAMPLES
+# ==========================================================
+valid_runs = [(rn, g) for rn, g in df.groupby("Run") if len(g) >= 5]
 
-if new_df.empty:
-    print("⚠ All new timestamps had <5 samples. No valid runs.")
-    exit(0)
+if not valid_runs:
+    print("⚠ All runs too short.")
+    exit()
 
-print(f"✔ Valid new samples after filtering short runs: {len(new_df)}")
+# ==========================================================
+# 6. COMPUTE RUN-LEVEL STATISTICS
+# ==========================================================
+final_rows = []
 
-# -----------------------
-# GROUP INTO RUNS — basic aggregates
-# -----------------------
-run_stats = new_df.groupby("Timestamp").agg(
-    Rows=("Heart_clean", "count"),
-    Avg_HR_clean=("Heart_clean", "mean"),
-    Avg_RR_clean=("Resp_clean", "mean"),
-    Avg_Range=("Range_clean", "mean"),
-    Range_SD=("Range_clean", "std")
-).reset_index()
+for rn, g in valid_runs:
 
-# extra features
-extra = new_df.groupby("Timestamp").agg(
-    HR_SD=("Heart_clean", "std"),
-    RR_SD=("Resp_clean", "std"),
-    HR_P2P=("Heart_clean", lambda x: float(x.max() - x.min())),
-    RR_P2P=("Resp_clean", lambda x: float(x.max() - x.min()))
-).reset_index()
+    timestamp = g["Timestamp"].iloc[0]
 
-def compute_range_slope(vals):
-    vals = vals.dropna()
-    if len(vals) < 2:
-        return 0.0
-    t = np.arange(len(vals))
-    return float(np.polyfit(t, vals, 1)[0])
+    avg_hr = g["Heart_clean"].mean()
+    avg_rr = g["Resp_clean"].mean()
+    avg_range = g["Range_clean"].mean()
 
-range_slopes = new_df.groupby("Timestamp")["Range_clean"].apply(compute_range_slope).reset_index()
-range_slopes.columns = ["Timestamp", "Range_Slope"]
+    range_sd = g["Range_clean"].std()
+    hr_sd = g["Heart_clean"].std()
+    rr_sd = g["Resp_clean"].std()
 
-def compute_sqi(group):
-    std = group["Range_clean"].std()
-    if pd.isna(std) or std == 0:
-        return 0.0
-    return float(1 / std)
+    hr_p2p = g["Heart_clean"].max() - g["Heart_clean"].min()
+    rr_p2p = g["Resp_clean"].max() - g["Resp_clean"].min()
 
-SQI = new_df.groupby("Timestamp").apply(compute_sqi).reset_index()
-SQI.columns = ["Timestamp", "SQI"]
+    arr = g["Range_clean"].dropna().values
+    t = np.arange(len(arr))
+    range_slope = float(np.polyfit(t, arr, 1)[0]) if len(arr) > 1 else 0.0
 
-# merge all pieces
-run_stats = (
-    run_stats.merge(extra, on="Timestamp")
-             .merge(range_slopes, on="Timestamp")
-             .merge(SQI, on="Timestamp")
-)
+    sqi = 0 if range_sd in [0, np.nan] else float(1 / range_sd)
 
-# fill NaNs sensibly
-fill_zero = ["Range_SD", "HR_SD", "RR_SD", "HR_P2P", "RR_P2P", "Range_Slope", "SQI"]
-for c in fill_zero:
-    if c in run_stats.columns:
-        run_stats[c] = run_stats[c].fillna(0.0)
+    # 🔥 Apply configuration-specific offset
+    config = int(g["ConfigurationFile"].iloc[0])
+    OFFSET = offsets["offset_0"] if config == 0 else offsets["offset_1"]
 
-for c in ["Avg_HR_clean", "Avg_RR_clean", "Avg_Range"]:
-    if c in run_stats.columns:
-        run_stats[c] = run_stats[c].fillna(0.0)
+    final_hr = avg_hr + OFFSET
 
-# -----------------------
-# HR CALIBRATION (OFFSET) - keep as before
-# -----------------------
-OFFSET = 10.5
-run_stats["Final_Accurate_HR"] = run_stats["Avg_HR_clean"] + OFFSET
+    # CLASSIFICATIONS
+    def classify_hr(hr):
+        if hr < 65: return "Low"
+        elif hr <= 90: return "Normal"
+        elif hr <= 115: return "Elevated"
+        else: return "High"
 
-# -----------------------
-# AUTO LABELS (classification columns)
-# -----------------------
-def classify_hr(hr):
-    if hr < 65: return "Low"
-    elif hr <= 90: return "Normal"
-    elif hr <= 115: return "Elevated"
-    else: return "High"
+    def classify_rr(rr):
+        if rr < 12: return "Low"
+        elif rr <= 20: return "Normal"
+        elif rr <= 25: return "Fast"
+        else: return "Very High"
 
-def classify_rr(rr):
-    if rr < 12: return "Low"
-    elif rr <= 20: return "Normal"
-    elif rr <= 25: return "Fast"
-    else: return "Very High"
+    def classify_stress(hsd):
+        if hsd < 0.05: return "Relaxed"
+        elif hsd < 0.15: return "Mild Stress"
+        elif hsd < 0.25: return "High Stress"
+        else: return "Very High Stress"
 
-def classify_stress(hr_sd):
-    # these thresholds are heuristic — adjust later if needed
-    if hr_sd < 0.05: return "Relaxed"
-    elif hr_sd < 0.15: return "Mild Stress"
-    elif hr_sd < 0.25: return "High Stress"
-    else: return "Very High Stress"
+    final_rows.append([
+        timestamp, rn, len(g),
+        avg_hr, avg_rr, avg_range,
+        range_sd, hr_sd, rr_sd,
+        hr_p2p, rr_p2p,
+        range_slope, sqi,
+        final_hr,
+        classify_hr(final_hr),
+        classify_rr(avg_rr),
+        classify_stress(hr_sd)
+    ])
 
-run_stats["HR_Class"] = run_stats["Avg_HR_clean"].apply(classify_hr)
-run_stats["RR_Class"] = run_stats["Avg_RR_clean"].apply(classify_rr)
-run_stats["Stress_Class"] = run_stats["HR_SD"].apply(classify_stress)
-
-# -----------------------
-# ASSIGN RUN NUMBERS (continue from prev if present)
-# -----------------------
-last_run = int(prev["Run"].max()) if ("Run" in prev.columns and len(prev) > 0) else 0
-
-run_stats = run_stats.sort_values("Timestamp").reset_index(drop=True)
-run_stats["Run"] = run_stats.index + 1 + last_run
-
-# -----------------------
-# ENSURE final column order (helps frontend)
-# -----------------------
-cols_order = [
+# ==========================================================
+# 7. SAVE OUTPUT
+# ==========================================================
+cols = [
     "Timestamp", "Run", "Rows",
     "Avg_HR_clean", "Avg_RR_clean", "Avg_Range",
-    "Range_SD", "HR_SD", "RR_SD", "HR_P2P", "RR_P2P",
+    "Range_SD", "HR_SD", "RR_SD",
+    "HR_P2P", "RR_P2P",
     "Range_Slope", "SQI",
     "Final_Accurate_HR",
     "HR_Class", "RR_Class", "Stress_Class"
 ]
-# keep only columns that exist and maintain order
-cols = [c for c in cols_order if c in run_stats.columns]
-run_stats = run_stats[cols]
 
-# -----------------------
-# APPEND to final CSV
-# -----------------------
+final_df = pd.DataFrame(final_rows, columns=cols)
 write_header = not os.path.exists(FINAL_STATS_FILE)
+final_df.to_csv(FINAL_STATS_FILE, mode="a", index=False, header=write_header)
 
-run_stats.to_csv(FINAL_STATS_FILE, mode="a", index=False, header=write_header)
-
-print("==============================================")
-print("✔ FINAL RUN STATS UPDATED SUCCESSFULLY")
-print(f"✔ New runs added: {len(run_stats)}")
-print(f"✔ Saved to: {FINAL_STATS_FILE}")
-print("==============================================")
+print("===============================================")
+print("✔ NEW FINAL RUN STATS GENERATED")
+print(f"✔ Runs added: {len(final_df)}")
+print(f"✔ Saved → {FINAL_STATS_FILE}")
+print("===============================================")

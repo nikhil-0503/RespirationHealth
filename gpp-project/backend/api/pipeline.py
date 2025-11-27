@@ -74,22 +74,14 @@ def run_sensor():
         config_number = data.get("configuration")
 
         if not user_email or config_number is None:
-            return jsonify({
-                "success": False,
-                "error": "Missing userEmail or configuration"
-            })
+            return jsonify({"success": False, "error": "Missing userEmail or configuration"})
 
         if not user_exists(user_email):
-            return jsonify({
-                "success": False,
-                "error": "User does not exist. Please sign up first."
-            })
+            return jsonify({"success": False, "error": "User does not exist. Please sign up first."})
 
         VITALSIGNS_SCRIPT = os.path.join(BASE_DIR, "backend", "vitalsigns.py")
 
-        print("\nRunning:", VITALSIGNS_SCRIPT)
-
-        # Run sensor script
+        # RUN SENSOR
         process = subprocess.Popen(
             [sys.executable, VITALSIGNS_SCRIPT, user_email, str(config_number)],
             stdout=subprocess.PIPE,
@@ -99,20 +91,10 @@ def run_sensor():
 
         stdout, stderr = process.communicate()
 
-        print("\n=== SENSOR STDOUT ===")
-        print(stdout)
-        print("\n=== SENSOR STDERR ===")
-        print(stderr)
-
         if process.returncode != 0:
-            return jsonify({
-                "success": False,
-                "error": stderr or stdout
-            })
+            return jsonify({"success": False, "error": stderr or stdout})
 
-        # ----------------------------------------------------
-        # Extract stats block from vitalsigns.py output
-        # ----------------------------------------------------
+        # Extract stats block
         stats_text = "No stats returned."
         collecting = False
         json_buffer = ""
@@ -131,23 +113,21 @@ def run_sensor():
         except:
             pass
 
-        # ----------------------------------------------------
-        # Run pipeline (clean → calibrate → predict)
-        # ----------------------------------------------------
-        subprocess.run(["python", CLEAN_SCRIPT], check=True)
-        subprocess.run(["python", CALIB_SCRIPT], check=True)
+        # RUN PIPELINE: CLEAN → CALIBRATE → ML
+        subprocess.run([sys.executable, CLEAN_SCRIPT], check=True)
+        subprocess.run([sys.executable, CALIB_SCRIPT], check=True)
 
-        raw_output = subprocess.check_output(["python", MODEL_SCRIPT], text=True).strip()
+        raw_output = subprocess.check_output([sys.executable, MODEL_SCRIPT], text=True).strip()
 
         try:
             ml_results = json.loads(raw_output)
         except:
-            ml_results = {"raw": raw_output}
+            ml_results = {"raw_output": raw_output}
 
+        # FINAL OUTPUT (same as upload pipeline)
         return jsonify({
             "success": True,
-            "sensor_output": stdout,
-            "stats_text": stats_text,   # <---- HERE!
+            "stats_text": stats_text,
             "ml_results": ml_results
         })
 

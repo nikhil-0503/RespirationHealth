@@ -82,19 +82,32 @@ const handleRunSensor = () => {
     .then((res) => res.json())
     .then((data) => {
       if (data.success) {
+
+        // ---- SHOW SUMMARY POPUP ----
         setPopupTitle("Vital Signs Summary");
-setPopupMessage(data.stats_text);  // pure raw block
+        setPopupMessage(data.stats_text);
+
+        // ---- SHOW ML RESULTS ON SCREEN (same as CSV) ----
+        if (data.ml_results) {
+          const r = data.ml_results;
+
+          setPredictedHR(r.Predicted_HR);
+          setHrClass(r.HR_Class);
+          setRrClass(r.RR_Class);
+          setStressClass(r.Stress_Class);
+        }
 
       } else {
         setPopupTitle("Sensor Error!");
         setPopupMessage(data.error || "Unknown error occurred while running sensor.");
       }
     })
-    .catch((err) => {
+    .catch(() => {
       setPopupTitle("Connection Error!");
       setPopupMessage("Cannot connect to backend. Run the backend server and try again.");
     });
 };
+
 
 
   // COLOR FUNCTION ------------------------

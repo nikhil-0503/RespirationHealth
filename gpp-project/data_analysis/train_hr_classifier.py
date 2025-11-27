@@ -1,41 +1,39 @@
-"""
-Train ONE combined multi-output classifier that predicts:
- - HR_Class
- - RR_Class
- - Stress_Class
-
-Creates:
-  vitals_classifier.joblib
-  vitals_class_metrics.json
-"""
-
 import os
-import pandas as pd
 import json
 import warnings
 warnings.filterwarnings("ignore")
 
+import pandas as pd
+import numpy as np
+
+from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from sklearn.pipeline import Pipeline
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.multioutput import MultiOutputClassifier
 from sklearn.metrics import classification_report
 from sklearn.impute import SimpleImputer
+from sklearn.pipeline import Pipeline
+
+from xgboost import XGBClassifier
 import joblib
 
-# ============================================================
-# FILE PATHS
-# ============================================================
+# ==========================================================
+# PATHS
+# ==========================================================
 BASE_DIR = r"C:\Users\Nikhil\Downloads\SSN\College Files\Grand Project\RespirationHealth\gpp-project\data_analysis"
 
-CSV = os.path.join(BASE_DIR, "final_run_stats.csv")
-MODEL_FILE = os.path.join(BASE_DIR, "vitals_classifier.joblib")
-METRICS_FILE = os.path.join(BASE_DIR, "vitals_class_metrics.json")
+CSV = os.path.join(BASE_DIR, "final_run_stats_new.csv")
+ENCODER_FILE = os.path.join(BASE_DIR, "class_label_encodings.json")
 
-# ============================================================
-# 10 FEATURES — MUST match inference script
-# ============================================================
+MODEL_HR = os.path.join(BASE_DIR, "hr_class_model.joblib")
+MODEL_RR = os.path.join(BASE_DIR, "rr_class_model.joblib")
+MODEL_STRESS = os.path.join(BASE_DIR, "stress_class_model.joblib")
+
+METRIC_HR = os.path.join(BASE_DIR, "hr_class_metrics.json")
+METRIC_RR = os.path.join(BASE_DIR, "rr_class_metrics.json")
+METRIC_STRESS = os.path.join(BASE_DIR, "stress_class_metrics.json")
+
+# ==========================================================
+# FEATURES & TARGETS
+# ==========================================================
 FEATURES = [
     "Avg_HR_clean", "Avg_RR_clean", "Avg_Range",
     "Range_SD", "HR_SD", "RR_SD",
@@ -45,136 +43,118 @@ FEATURES = [
 TARGETS = ["HR_Class", "RR_Class", "Stress_Class"]
 
 
-# ============================================================
-# LOAD DATA
-# ============================================================
-def load_data():
-    if not os.path.exists(CSV):
-        raise FileNotFoundError("❌ final_run_stats.csv not found!")
-
+# ==========================================================
+# LOAD + CLEAN
+# ==========================================================
+def load_and_clean():
     df = pd.read_csv(CSV)
-
-    # Drop rows missing any class label
+    df = df.drop_duplicates()
     df = df.dropna(subset=TARGETS)
 
-    # Convert categories to strings (safe)
-    for col in TARGETS:
-        df[col] = df[col].astype(str)
-
-    # Convert feature columns to numeric
     for f in FEATURES:
         df[f] = pd.to_numeric(df[f], errors="coerce")
 
-    # Remove rows with any missing feature
     df = df.dropna(subset=FEATURES)
-
     return df
 
 
-# ============================================================
-# TRAIN MODEL
-# ============================================================
-def train_model():
-    df = load_data()
+# ==========================================================
+# TRAIN SINGLE CLASSIFIER
+# ==========================================================
+def train_single_classifier(df, target, save_model, save_metrics, encoders):
+
+    print("\n================================")
+    print(f"🚀 Training model for {target}")
+    print("================================")
 
     X = df[FEATURES]
-    Y = df[TARGETS]
+    y = df[target]
 
-    # Stratify only by HR_Class (best practice)
-    X_train, X_test, Y_train, Y_test = train_test_split(
-        X, Y,
+    # Encode labels
+    le = LabelEncoder()
+    y_encoded = le.fit_transform(y)
+
+    encoders[target] = {
+        "classes": le.classes_.tolist(),
+        "mapping": {cls: int(idx) for cls, idx in zip(le.classes_, le.transform(le.classes_))}
+    }
+
+    # Split
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y_encoded,
         test_size=0.25,
         random_state=42,
-        stratify=Y["HR_Class"]
+        stratify=y_encoded
     )
 
-    # Preprocessing pipeline
-    preprocess = Pipeline([
-        ("imputer", SimpleImputer(strategy="median")),
-        ("scaler", StandardScaler())
-    ])
-
-    # Base classifier
-    base_model = RandomForestClassifier(
-        n_estimators=400,
-        max_depth=None,
-        random_state=42,
-        n_jobs=-1
-    )
-
-    # Wrap inside multi-output classifier
+    # Build pipeline
     model = Pipeline([
-        ("prep", preprocess),
-        ("clf", MultiOutputClassifier(base_model))
+        ("imputer", SimpleImputer(strategy="median")),
+        ("scale", StandardScaler()),
+        ("clf", XGBClassifier(
+            n_estimators=300,
+            max_depth=4,
+            learning_rate=0.05,
+            subsample=0.9,
+            colsample_bytree=0.9,
+            objective="multi:softprob",
+            num_class=len(le.classes_),
+            eval_metric="mlogloss",
+            random_state=42
+        ))
     ])
 
-    print("📌 Training multi-output classifier...")
-    model.fit(X_train, Y_train)
+    # Train model
+    model.fit(X_train, y_train)
 
-    print("📌 Evaluating model...")
-    Y_pred = model.predict(X_test)
+    # ==========================================
+    # CORRECT PREDICT_PROBA EXTRACTION
+    # ==========================================
+    X_test_processed = model.named_steps["imputer"].transform(X_test)
+    X_test_processed = model.named_steps["scale"].transform(X_test_processed)
 
-    reports = {}
-    for i, label in enumerate(TARGETS):
-        reports[label] = classification_report(
-            Y_test[label],
-            Y_pred[:, i],
-            output_dict=True
-        )
+    clf = model.named_steps["clf"]
+    probas = clf.predict_proba(X_test_processed)
+
+    y_pred = np.argmax(probas, axis=1)
+
+    # Classification metrics
+    rep = classification_report(
+        y_test, y_pred,
+        output_dict=True,
+        zero_division=0
+    )
 
     # Save model
-    joblib.dump(model, MODEL_FILE)
-    print(f"✔ Saved model to {MODEL_FILE}")
+    joblib.dump(model, save_model)
+    print(f"✔ Saved model → {save_model}")
 
-    # Save evaluation metrics
-    with open(METRICS_FILE, "w") as f:
-        json.dump(reports, f, indent=2)
-    print(f"✔ Saved metrics to {METRICS_FILE}")
-
-    return model, reports
+    # Save metrics
+    with open(save_metrics, "w") as f:
+        json.dump(rep, f, indent=2)
+    print(f"✔ Saved metrics → {save_metrics}")
 
 
-# ============================================================
-# PREDICT FUNCTION (same as inference)
-# ============================================================
-def predict_classes(feature_row: dict):
-    """
-    Predict HR_Class, RR_Class, Stress_Class
-    Input example:
+# ==========================================================
+# TRAIN ALL THREE MODELS
+# ==========================================================
+def train_all():
 
-    {
-        "Avg_HR_clean": 78,
-        "Avg_RR_clean": 13,
-        "Avg_Range": 0.65,
-        "Range_SD": 0.0021,
-        "HR_SD": 0.11,
-        "RR_SD": 0.09,
-        "HR_P2P": 0.35,
-        "RR_P2P": 0.31,
-        "SQI": 250,
-        "Range_Slope": 0.0001
-    }
-    """
-    if not os.path.exists(MODEL_FILE):
-        raise FileNotFoundError("❌ vitals_classifier.joblib not found. Train first!")
+    df = load_and_clean()
+    encoders = {}
 
-    model = joblib.load(MODEL_FILE)
+    train_single_classifier(df, "HR_Class", MODEL_HR, METRIC_HR, encoders)
+    train_single_classifier(df, "RR_Class", MODEL_RR, METRIC_RR, encoders)
+    train_single_classifier(df, "Stress_Class", MODEL_STRESS, METRIC_STRESS, encoders)
 
-    df = pd.DataFrame([feature_row], columns=FEATURES)
+    with open(ENCODER_FILE, "w") as f:
+        json.dump(encoders, f, indent=2)
 
-    pred = model.predict(df)[0]
-
-    return {
-        "HR_Class": pred[0],
-        "RR_Class": pred[1],
-        "Stress_Class": pred[2]
-    }
+    print(f"\n✔ Saved encoders → {ENCODER_FILE}")
 
 
-# ============================================================
-# RUN TRAINING
-# ============================================================
+# ==========================================================
+# MAIN
+# ==========================================================
 if __name__ == "__main__":
-    model, rep = train_model()
-    print("\n========== TRAINING SUMMARY ==========")
-    print(json.dumps(rep, indent=2))
+    train_all()

@@ -2,94 +2,82 @@
   "HR_Class": {
     "Elevated": {
       "precision": 1.0,
-      "recall": 0.9444444444444444,
-      "f1-score": 0.9714285714285714,
-      "support": 18.0
-    },
-    "Low": {
-      "precision": 1.0,
       "recall": 1.0,
       "f1-score": 1.0,
-      "support": 16.0
+      "support": 6.0
+    },
+    "Low": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1-score": 0.0,
+      "support": 2.0
     },
     "Normal": {
-      "precision": 0.96,
+      "precision": 0.9285714285714286,
       "recall": 1.0,
-      "f1-score": 0.9795918367346939,
-      "support": 24.0
+      "f1-score": 0.9629629629629629,
+      "support": 26.0
     },
-    "accuracy": 0.9827586206896551,
+    "accuracy": 0.9411764705882353,
     "macro avg": {
-      "precision": 0.9866666666666667,
-      "recall": 0.9814814814814815,
-      "f1-score": 0.9836734693877552,
-      "support": 58.0
+      "precision": 0.6428571428571429,
+      "recall": 0.6666666666666666,
+      "f1-score": 0.6543209876543209,
+      "support": 34.0
     },
     "weighted avg": {
-      "precision": 0.983448275862069,
-      "recall": 0.9827586206896551,
-      "f1-score": 0.9826882477128781,
-      "support": 58.0
+      "precision": 0.8865546218487395,
+      "recall": 0.9411764705882353,
+      "f1-score": 0.9128540305010893,
+      "support": 34.0
     }
   },
   "RR_Class": {
     "Low": {
       "precision": 1.0,
-      "recall": 1.0,
-      "f1-score": 1.0,
-      "support": 48.0
+      "recall": 0.25,
+      "f1-score": 0.4,
+      "support": 4.0
     },
     "Normal": {
-      "precision": 1.0,
+      "precision": 0.9090909090909091,
       "recall": 1.0,
-      "f1-score": 1.0,
-      "support": 10.0
+      "f1-score": 0.9523809523809523,
+      "support": 30.0
     },
-    "accuracy": 1.0,
+    "accuracy": 0.9117647058823529,
     "macro avg": {
-      "precision": 1.0,
-      "recall": 1.0,
-      "f1-score": 1.0,
-      "support": 58.0
+      "precision": 0.9545454545454546,
+      "recall": 0.625,
+      "f1-score": 0.6761904761904762,
+      "support": 34.0
     },
     "weighted avg": {
-      "precision": 1.0,
-      "recall": 1.0,
-      "f1-score": 1.0,
-      "support": 58.0
+      "precision": 0.9197860962566845,
+      "recall": 0.9117647058823529,
+      "f1-score": 0.8873949579831932,
+      "support": 34.0
     }
   },
   "Stress_Class": {
-    "High Stress": {
-      "precision": 1.0,
-      "recall": 1.0,
-      "f1-score": 1.0,
-      "support": 8.0
-    },
-    "Mild Stress": {
-      "precision": 1.0,
-      "recall": 1.0,
-      "f1-score": 1.0,
-      "support": 9.0
-    },
     "Very High Stress": {
       "precision": 1.0,
       "recall": 1.0,
       "f1-score": 1.0,
-      "support": 41.0
+      "support": 34.0
     },
     "accuracy": 1.0,
     "macro avg": {
       "precision": 1.0,
       "recall": 1.0,
       "f1-score": 1.0,
-      "support": 58.0
+      "support": 34.0
     },
     "weighted avg": {
       "precision": 1.0,
       "recall": 1.0,
       "f1-score": 1.0,
-      "support": 58.0
+      "support": 34.0
     }
   }
 }
