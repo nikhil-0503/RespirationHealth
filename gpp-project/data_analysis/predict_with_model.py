@@ -24,7 +24,56 @@ FEATURES = [
 
 
 # --------------------------------------------------------
-# LOAD LABEL ENCODERS PROPERLY BASED ON YOUR JSON FORMAT
+# SAFE CLEAN FUNCTION -> handles ANY shape
+# --------------------------------------------------------
+def clean_pred(v):
+    """
+    Takes ANY output and returns a clean integer.
+    Handles:
+      - integer
+      - array([1])
+      - array([[1]])
+      - array([0., 1.])  <-- probability vector
+      - list [1]
+      - list [[1]]
+      - list of probas
+    """
+
+    # 1️⃣ Direct integer
+    if isinstance(v, (int, np.integer)):
+        return int(v)
+
+    # 2️⃣ If numpy array:
+    if isinstance(v, np.ndarray):
+        arr = v.flatten()
+
+        # Probability vector? (example: [0. 1.])
+        if arr.dtype.kind == "f" and len(arr) > 1:
+            return int(np.argmax(arr))
+
+        # Must be scalar after flatten
+        if len(arr) != 1:
+            raise ValueError(f"Cannot convert array of size {len(arr)} to scalar: {arr}")
+
+        return int(arr[0])
+
+    # 3️⃣ If list / tuple:
+    if isinstance(v, (list, tuple)):
+        if len(v) == 1:
+            return clean_pred(v[0])
+
+        # Probability list (example [0.1, 0.9])
+        if all(isinstance(x, float) for x in v):
+            return int(np.argmax(v))
+
+        raise ValueError(f"List has more than 1 element: {v}")
+
+    raise ValueError(f"Unknown prediction type: {type(v)}, value={v}")
+
+
+
+# --------------------------------------------------------
+# LOAD LABEL ENCODERS
 # --------------------------------------------------------
 def load_encoders():
     enc = json.load(open(ENCODER_FILE))
@@ -32,17 +81,15 @@ def load_encoders():
     fixed = {}
 
     for key in ["HR_Class", "RR_Class", "Stress_Class"]:
-        mapping = enc[key]["mapping"]       # <-- THIS is correct
-
+        mapping = enc[key]["mapping"]
         inv = {}
-        for label, idx in mapping.items():
 
-            # convert numpy / list types to clean int
+        # mapping is dict: label -> encoded_int
+        for label, idx in mapping.items():
             if isinstance(idx, list) and len(idx) == 1:
                 idx = idx[0]
             if hasattr(idx, "item"):
                 idx = int(idx.item())
-
             inv[int(idx)] = label
 
         fixed[key] = inv
@@ -54,34 +101,33 @@ def load_encoders():
 # MAIN INFERENCE
 # --------------------------------------------------------
 def inference_from_latest_run():
-
     df = pd.read_csv(FINAL_STATS_FILE).drop_duplicates()
     df = df.sort_values("Timestamp")
     latest = df.iloc[-1]
 
     X = latest[FEATURES].astype(float).values.reshape(1, -1)
 
-    # Load regression
+    # Regression
     reg_model = joblib.load(HR_MODEL_FILE)
     hr_pred = float(reg_model.predict(X)[0])
 
-    # Load encoders
+    # Encoders
     enc = load_encoders()
 
-    # Load classification models
+    # Classifier models
     hr_model = joblib.load(MODEL_HR)
     rr_model = joblib.load(MODEL_RR)
     st_model = joblib.load(MODEL_ST)
 
-    # Predict encoded classes
-    hr_encoded = int(hr_model.predict(X)[0])
-    rr_encoded = int(rr_model.predict(X)[0])
-    st_encoded = int(st_model.predict(X)[0])
+    # Clean predictions
+    hr_code = clean_pred(hr_model.predict(X))
+    rr_code = clean_pred(rr_model.predict(X))
+    st_code = clean_pred(st_model.predict(X))
 
-    # Decode back to labels
-    hr_label = enc["HR_Class"][hr_encoded]
-    rr_label = enc["RR_Class"][rr_encoded]
-    st_label = enc["Stress_Class"][st_encoded]
+    # Decode
+    hr_label = enc["HR_Class"].get(hr_code, "Unknown")
+    rr_label = enc["RR_Class"].get(rr_code, "Unknown")
+    st_label = enc["Stress_Class"].get(st_code, "Unknown")
 
     return {
         "Predicted_HR": round(hr_pred, 2),
@@ -91,6 +137,8 @@ def inference_from_latest_run():
     }
 
 
+# --------------------------------------------------------
+# RUN
 # --------------------------------------------------------
 if __name__ == "__main__":
     try:

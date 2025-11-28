@@ -24,7 +24,6 @@ MASTER_FILE = os.path.join(BASE_DIR, "backend", "vital_signs_new_data.csv")
 USERS_FILE = os.path.join(BASE_DIR, "backend", "users.csv")
 
 CLEAN_SCRIPT = os.path.join(BASE_DIR, "data_analysis", "cleaning_data.py")
-CALIB_SCRIPT = os.path.join(BASE_DIR, "data_analysis", "calibration.py")
 MODEL_SCRIPT = os.path.join(BASE_DIR, "data_analysis", "predict_with_model.py")
 
 
@@ -81,7 +80,7 @@ def run_sensor():
 
         VITALSIGNS_SCRIPT = os.path.join(BASE_DIR, "backend", "vitalsigns.py")
 
-        # RUN SENSOR
+        # RUN SENSOR SCRIPT
         process = subprocess.Popen(
             [sys.executable, VITALSIGNS_SCRIPT, user_email, str(config_number)],
             stdout=subprocess.PIPE,
@@ -94,7 +93,7 @@ def run_sensor():
         if process.returncode != 0:
             return jsonify({"success": False, "error": stderr or stdout})
 
-        # Extract stats block
+        # EXTRACT STATS BLOCK
         stats_text = "No stats returned."
         collecting = False
         json_buffer = ""
@@ -113,10 +112,14 @@ def run_sensor():
         except:
             pass
 
-        # RUN PIPELINE: CLEAN → CALIBRATE → ML
+        # -------------------------------------------------------
+        # RUN CLEANING (includes calibration internally now)
+        # -------------------------------------------------------
         subprocess.run([sys.executable, CLEAN_SCRIPT], check=True)
-        subprocess.run([sys.executable, CALIB_SCRIPT], check=True)
 
+        # -------------------------------------------------------
+        # RUN ML MODEL
+        # -------------------------------------------------------
         raw_output = subprocess.check_output([sys.executable, MODEL_SCRIPT], text=True).strip()
 
         try:
@@ -124,7 +127,6 @@ def run_sensor():
         except:
             ml_results = {"raw_output": raw_output}
 
-        # FINAL OUTPUT (same as upload pipeline)
         return jsonify({
             "success": True,
             "stats_text": stats_text,
@@ -136,15 +138,15 @@ def run_sensor():
 
 
 # ------------------------------------------------------------
-# 3️⃣ MANUAL PIPELINE RUN (upload flow)
+# 3️⃣ MANUAL PIPELINE RUN
 # ------------------------------------------------------------
 @app.post("/run_pipeline")
 def run_pipeline():
     try:
-        subprocess.run(["python", CLEAN_SCRIPT], check=True)
-        subprocess.run(["python", CALIB_SCRIPT], check=True)
+        # Run cleaning (this now includes calibration logic)
+        subprocess.run([sys.executable, CLEAN_SCRIPT], check=True)
 
-        raw_output = subprocess.check_output(["python", MODEL_SCRIPT], text=True).strip()
+        raw_output = subprocess.check_output([sys.executable, MODEL_SCRIPT], text=True).strip()
 
         try:
             ml_output = json.loads(raw_output)

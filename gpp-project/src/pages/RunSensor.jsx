@@ -71,6 +71,10 @@ const handleRunSensor = () => {
     return;
   }
 
+  // 🔥 Show processing popup IMMEDIATELY
+  setPopupTitle("Processing...");
+  setPopupMessage("Starting sensor...\nCollecting data...\nCleaning...\nCalibrating...\nExtracting Features...\nAnalysing Data...");
+
   fetch("http://localhost:5002/run-sensor", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -87,7 +91,7 @@ const handleRunSensor = () => {
         setPopupTitle("Vital Signs Summary");
         setPopupMessage(data.stats_text);
 
-        // ---- SHOW ML RESULTS ON SCREEN (same as CSV) ----
+        // ---- SHOW ML RESULTS ON SCREEN ----
         if (data.ml_results) {
           const r = data.ml_results;
 
@@ -250,27 +254,7 @@ const getColorClass = (label) => {
       >
         Run the Sensor
       </button>
-              <div><label><br></br>(Or)</label></div>
-      {/* Upload CSV */}
-      <div className="w-full max-w-xl bg-[#0f0f0f] border border-gray-700 rounded-xl p-6 mt-10 shadow-lg">
-        <label className="block text-lg font-semibold mb-4 text-center">
-          Upload Radar Data (CSV)
-        </label>
-
-        <input
-          type="file"
-          accept=".csv"
-          onChange={(e) => setSelectedFile(e.target.files[0])}
-          className="block w-full text-gray-200 border border-gray-600 rounded-lg p-2 bg-[#1a1a1a]"
-        />
-
-        <button
-          onClick={handleUploadCsv}
-          className="mt-4 w-full px-6 py-3 border border-gray-600 text-gray-200 rounded-lg transition hover:bg-[#1a1a1a]"
-        >
-          Upload & Process File
-        </button>
-      </div>
+      
 
 {/* ---------------- CLEAN SENTENCE OUTPUT ---------------- */}
 {predictedHR && (
